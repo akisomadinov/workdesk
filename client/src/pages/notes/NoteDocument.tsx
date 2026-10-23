@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useImperativeHandle, useState } from "react";
 import {
     Alert,
     Box,
@@ -14,8 +14,12 @@ import {
     MenuItem,
     Stack,
     TextField,
-    Typography
+    Typography,
+    Tooltip
 } from "@mui/material";
+import type { Ref } from "react";
+import DeleteOutlineRounded from "@mui/icons-material/DeleteOutlineRounded";
+import useContextMenu from "@/hooks/useContextMenu";
 import MoreHorizRounded from "@mui/icons-material/MoreHorizRounded";
 import LockOutlined from "@mui/icons-material/LockOutlined";
 import GroupsOutlined from "@mui/icons-material/GroupsOutlined";
@@ -31,54 +35,118 @@ import { downloadMarkdown, linksTo } from "@/common/markdown";
 import MarkdownEditor from "@/common/MarkdownEditor";
 import MarkdownView from "@/common/MarkdownView";
 
-export default function NoteDocument({ note, notes }: { note: NoteItem; notes: NoteItem[] }) {
+export interface NoteDocumentHandle {
+    remove: () => void;
+    rename: () => void;
+    download: () => void;
+}
+export default function NoteDocument({
+    note,
+    notes,
+    ref,
+    focusTitle = false,
+    onDeleted
+}: {
+    note: NoteItem;
+    notes: NoteItem[];
+    ref?: Ref<NoteDocumentHandle>;
+    focusTitle?: boolean;
+    onDeleted: () => void;
+}) {
     const editor = useNoteEditor(note);
     const { control, register, setValue } = editor.form;
     const values = useWatch({ control });
     const { data: spaces = [] } = useTeamGetQuery();
     const { data: session } = useAuthSessionQuery();
     const { data: tasks = [] } = useTasksGetQuery();
-    const [menu, setMenu] = useState<HTMLElement | null>(null);
+    const menu = useContextMenu();
     const [settingsOpen, setSettingsOpen] = useState(false);
     const [linksOpen, setLinksOpen] = useState(false);
     const [childOpen, setChildOpen] = useState(false);
     const [historyOpen, setHistoryOpen] = useState(false);
     const [remove, setRemove] = useState(false);
     const [archiveOpen, setArchiveOpen] = useState(false);
+    const { setFocus } = editor.form;
+    useEffect(() => {
+        if (focusTitle && note.canEdit) setFocus("title", { shouldSelect: true });
+    }, [focusTitle, note.canEdit, setFocus]);
+    useImperativeHandle(ref, () => ({
+        remove: () => {
+            if (note.canEdit) setRemove(true);
+        },
+        rename: () => {
+            if (note.canEdit) setFocus("title", { shouldSelect: true });
+        },
+        download: () => {
+            const current = editor.form.getValues();
+            downloadMarkdown(current.title, current.body);
+        }
+    }));
     const { data: history = [] } = useNotesHistoryQuery({ id: note.id }, { skip: !historyOpen });
     const navigate = useNavigate();
     const relatedTasks = tasks.filter((task) => task.documentIds?.includes(note.id));
     const backlinks = notes.filter((other) => other.id !== note.id && linksTo(other.body, note));
     return (
         <Stack gap={2}>
-            <Stack direction="row" alignItems="center" gap={1}>
+            <Stack
+                direction="row"
+                alignItems="center"
+                gap={{ xs: 0.5, sm: 1 }}
+                onContextMenu={menu.triggerProps.onContextMenu}
+                onKeyDown={menu.triggerProps.onKeyDown}
+                sx={{ minWidth: 0 }}
+            >
                 <Button
                     color="inherit"
                     size="small"
                     startIcon={values.workspaceId ? <GroupsOutlined /> : <LockOutlined />}
                     onClick={() => setSettingsOpen(true)}
+                    sx={{ minWidth: 0, flexShrink: 1 }}
                 >
-                    {values.workspaceId
-                        ? (spaces.find((space) => space.id === values.workspaceId)?.name ?? "Команда")
-                        : "Только мне"}
+                    <Box component="span" sx={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {values.workspaceId
+                            ? (spaces.find((space) => space.id === values.workspaceId)?.name ?? "Команда")
+                            : "Только мне"}
+                    </Box>
                 </Button>
                 <Typography
                     variant="caption"
                     color={editor.error ? "error" : "text.secondary"}
                     role="status"
-                    sx={{ ml: "auto" }}
+                    noWrap
+                    title={editor.status}
+                    sx={{ ml: "auto", maxWidth: { xs: 80, sm: "none" } }}
                 >
                     {editor.status}
                 </Typography>
-                <IconButton aria-label="Действия с документом" onClick={(event) => setMenu(event.currentTarget)}>
+                {note.canEdit && (
+                    <Tooltip title="Удалить документ">
+                        <IconButton
+                            aria-label="Удалить документ"
+                            size="small"
+                            sx={{ width: 36, height: 36 }}
+                            onClick={() => setRemove(true)}
+                        >
+                            <DeleteOutlineRounded fontSize="small" />
+                        </IconButton>
+                    </Tooltip>
+                )}
+                <IconButton
+                    aria-label="Действия с документом"
+                    size="small"
+                    sx={{ width: 36, height: 36 }}
+                    aria-haspopup="menu"
+                    aria-expanded={menu.open}
+                    onClick={menu.openButton}
+                >
                     <MoreHorizRounded />
                 </IconButton>
-                <Menu anchorEl={menu} open={!!menu} onClose={() => setMenu(null)}>
+                <Menu {...menu.menuProps}>
                     <MenuItem
                         disabled={!note.canEdit}
                         onClick={() => {
                             setChildOpen(true);
-                            setMenu(null);
+                            menu.close();
                         }}
                     >
                         Добавить вложенный документ
@@ -87,7 +155,7 @@ export default function NoteDocument({ note, notes }: { note: NoteItem; notes: N
                         disabled={!note.canEdit}
                         onClick={() => {
                             setValue("pinned", !values.pinned, { shouldDirty: true });
-                            setMenu(null);
+                            menu.close();
                         }}
                     >
                         {values.pinned ? "Открепить" : "Закрепить"}
@@ -95,7 +163,7 @@ export default function NoteDocument({ note, notes }: { note: NoteItem; notes: N
                     <MenuItem
                         onClick={() => {
                             setSettingsOpen(true);
-                            setMenu(null);
+                            menu.close();
                         }}
                     >
                         Свойства и доступ
@@ -104,7 +172,7 @@ export default function NoteDocument({ note, notes }: { note: NoteItem; notes: N
                         disabled={!note.canEdit}
                         onClick={() => {
                             setLinksOpen(true);
-                            setMenu(null);
+                            menu.close();
                         }}
                     >
                         Связать с задачей или документом
@@ -112,7 +180,7 @@ export default function NoteDocument({ note, notes }: { note: NoteItem; notes: N
                     <MenuItem
                         onClick={() => {
                             setHistoryOpen(true);
-                            setMenu(null);
+                            menu.close();
                         }}
                     >
                         История изменений
@@ -120,7 +188,7 @@ export default function NoteDocument({ note, notes }: { note: NoteItem; notes: N
                     <MenuItem
                         onClick={() => {
                             downloadMarkdown(values.title ?? note.title, values.body ?? note.body);
-                            setMenu(null);
+                            menu.close();
                         }}
                     >
                         Скачать Markdown
@@ -129,7 +197,7 @@ export default function NoteDocument({ note, notes }: { note: NoteItem; notes: N
                         disabled={!note.canEdit}
                         onClick={() => {
                             setArchiveOpen(true);
-                            setMenu(null);
+                            menu.close();
                         }}
                     >
                         {note.archived ? "Вернуть из архива" : "В архив"}
@@ -139,7 +207,7 @@ export default function NoteDocument({ note, notes }: { note: NoteItem; notes: N
                         disabled={!note.canEdit}
                         sx={{ color: "error.main" }}
                         onClick={() => {
-                            setMenu(null);
+                            menu.close();
                             setRemove(true);
                         }}
                     >
@@ -150,11 +218,11 @@ export default function NoteDocument({ note, notes }: { note: NoteItem; notes: N
             {remove && (
                 <DeleteMaterialDialog
                     kind="note"
-                    item={note}
+                    item={{ ...note, title: values.title ?? note.title }}
                     prepare={editor.flush}
                     getRevision={() => editor.revision.current}
                     onClose={() => setRemove(false)}
-                    onDeleted={() => navigate("/notes")}
+                    onDeleted={onDeleted}
                 />
             )}
             {childOpen && <NewDocumentDialog parent={note} onClose={() => setChildOpen(false)} />}
@@ -178,9 +246,18 @@ export default function NoteDocument({ note, notes }: { note: NoteItem; notes: N
             )}
             <TextField
                 variant="standard"
+                multiline
                 placeholder="Название документа"
                 slotProps={{ input: { disableUnderline: true }, htmlInput: { "aria-label": "Название документа" } }}
-                sx={{ "& input": { fontSize: { xs: 27, sm: 34 }, fontWeight: 750, letterSpacing: -0.8, py: 1.5 } }}
+                sx={{
+                    "& .MuiInputBase-input": {
+                        fontSize: { xs: 27, sm: 34 },
+                        fontWeight: 750,
+                        lineHeight: 1.35,
+                        letterSpacing: -0.8,
+                        py: 1.5
+                    }
+                }}
                 {...register("title")}
                 disabled={!note.canEdit}
                 error={!!editor.form.formState.errors.title}

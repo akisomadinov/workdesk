@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Alert, Box, Button, LinearProgress, Snackbar, Stack, Tab, Tabs, Typography } from "@mui/material";
 import ArrowBackRounded from "@mui/icons-material/ArrowBackRounded";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import {
     useAuthSessionQuery,
     useNotesRestoreMutation,
@@ -18,7 +18,8 @@ export default function TrashPage() {
     const [restoreNote] = useNotesRestoreMutation();
     const { scope } = useWorkspaceStore();
     const { data: session } = useAuthSessionQuery();
-    const [tab, setTab] = useState<"task" | "note">("task");
+    const [params, setParams] = useSearchParams();
+    const tab = params.get("type") === "note" ? "note" : "task";
     const [busy, setBusy] = useState<string[]>([]);
     const [error, setError] = useState("");
     const [restored, setRestored] = useState<{ url: string; title: string } | null>(null);
@@ -47,7 +48,9 @@ export default function TrashPage() {
             </Box>
             <Tabs
                 value={tab}
-                onChange={(_, value: "task" | "note") => setTab(value)}
+                onChange={(_, value: "task" | "note") =>
+                    setParams(value === "note" ? { type: "note" } : {}, { replace: true })
+                }
                 variant="scrollable"
                 allowScrollButtonsMobile
                 aria-label="Содержимое корзины"

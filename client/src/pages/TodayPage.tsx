@@ -19,11 +19,11 @@ import ExpandMoreRounded from "@mui/icons-material/ExpandMoreRounded";
 import MoreHorizRounded from "@mui/icons-material/MoreHorizRounded";
 import { Link } from "react-router-dom";
 import useTaskWorkspace from "@/hooks/useTaskWorkspace";
+import useContextMenu from "@/hooks/useContextMenu";
 import useLocalDay from "@/hooks/useLocalDay";
 import { useUiStore } from "@/stores/useUiStore";
 import { message } from "@/common/models";
 import type { TaskItem } from "@/common/models";
-import NewDocumentDialog from "@/common/NewDocumentDialog";
 import DeleteMaterialDialog from "@/common/DeleteMaterialDialog";
 import NewTaskDialog from "./NewTaskDialog";
 import TaskDetails from "./tasks/TaskDetails";
@@ -36,9 +36,9 @@ export default function TodayPage() {
     const { select } = useUiStore();
     const today = useLocalDay();
     const day = buildToday(scoped, today);
+    const firstMenu = useContextMenu(day.first?.id);
     const [create, setCreate] = useState(false);
     const [plan, setPlan] = useState(false);
-    const [documentOpen, setDocumentOpen] = useState(false);
     const [doneOpen, setDoneOpen] = useState(false);
     const [menu, setMenu] = useState<HTMLElement | null>(null);
     const [remove, setRemove] = useState<TaskItem | null>(null);
@@ -122,15 +122,6 @@ export default function TodayPage() {
                 </Stack>
             )}
             <Menu anchorEl={menu} open={!!menu} onClose={() => setMenu(null)}>
-                <MenuItem
-                    disabled={!canCreate}
-                    onClick={() => {
-                        setMenu(null);
-                        setDocumentOpen(true);
-                    }}
-                >
-                    Создать документ
-                </MenuItem>
                 <MenuItem component={Link} to="/board" onClick={() => setMenu(null)}>
                     Открыть доску
                 </MenuItem>
@@ -150,6 +141,8 @@ export default function TodayPage() {
                     component="section"
                     aria-label="Сначала"
                     id="today-first"
+                    onContextMenu={firstMenu.triggerProps.onContextMenu}
+                    onKeyDown={firstMenu.triggerProps.onKeyDown}
                     sx={{
                         p: { xs: 2.5, sm: 3 },
                         borderRadius: 2,
@@ -171,20 +164,19 @@ export default function TodayPage() {
                                     {firstReason(first, today)}
                                 </Typography>
                             </Stack>
-                            {first.canEdit !== false && (
-                                <Box sx={{ flexShrink: 0 }}>
-                                    <TodayTaskMenu
-                                        task={first}
-                                        today={today}
-                                        busy={busy.includes(first.id)}
-                                        onOpen={() => select(first.id)}
-                                        onChange={(changes) => {
-                                            void change(first, changes).catch(() => {});
-                                        }}
-                                        onDelete={() => setRemove(first)}
-                                    />
-                                </Box>
-                            )}
+                            <Box sx={{ flexShrink: 0 }}>
+                                <TodayTaskMenu
+                                    menu={firstMenu}
+                                    task={first}
+                                    today={today}
+                                    busy={busy.includes(first.id)}
+                                    onOpen={() => select(first.id)}
+                                    onChange={(changes) => {
+                                        void change(first, changes).catch(() => {});
+                                    }}
+                                    onDelete={() => setRemove(first)}
+                                />
+                            </Box>
                         </Stack>
                         <Box>
                             <Typography variant="h5" sx={{ lineHeight: 1.4, overflowWrap: "anywhere" }}>
@@ -334,7 +326,6 @@ export default function TodayPage() {
                     }}
                 />
             )}
-            {documentOpen && <NewDocumentDialog onClose={() => setDocumentOpen(false)} />}
             {remove && (
                 <DeleteMaterialDialog
                     kind="task"

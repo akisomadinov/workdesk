@@ -6,10 +6,9 @@ import {
     CircularProgress,
     IconButton,
     List,
-    ListItemButton,
-    ListItemText,
     Menu,
     MenuItem,
+    Snackbar,
     Stack,
     TextField,
     Tooltip,
@@ -18,15 +17,17 @@ import {
 import AddRounded from "@mui/icons-material/AddRounded";
 import DescriptionOutlined from "@mui/icons-material/DescriptionOutlined";
 import MoreHorizRounded from "@mui/icons-material/MoreHorizRounded";
-import ChevronRightRounded from "@mui/icons-material/ChevronRightRounded";
-import ExpandMoreRounded from "@mui/icons-material/ExpandMoreRounded";
 import ArrowBackRounded from "@mui/icons-material/ArrowBackRounded";
 import SearchRounded from "@mui/icons-material/SearchRounded";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useNotesImportMutation, useTeamGetQuery } from "@/api/autogen/workdesk";
+import type { NoteItem } from "@/hooks/useNotebook";
+import type { NoteDocumentHandle } from "./notes/NoteDocument";
+import NoteListItem from "./notes/NoteListItem";
+import DeleteMaterialDialog from "@/common/DeleteMaterialDialog";
 import { useNotes } from "@/hooks/useNotebook";
-import { dateTime, message } from "@/common/models";
-import { noteTree } from "@/common/markdown";
+import { message } from "@/common/models";
+import { noteTree, downloadMarkdown } from "@/common/markdown";
 import { useWorkspaceStore } from "@/stores/useWorkspaceStore";
 import NewDocumentDialog from "@/common/NewDocumentDialog";
 const NoteDocument = lazy(() => import("./notes/NoteDocument"));
@@ -44,6 +45,9 @@ export default function NotesPage() {
     const [archive, setArchive] = useState(false);
     const [createOpen, setCreateOpen] = useState(false);
     const [menu, setMenu] = useState<HTMLElement | null>(null);
+    const editor = useRef<NoteDocumentHandle>(null);
+    const [remove, setRemove] = useState<NoteItem | null>(null);
+    const [notice, setNotice] = useState("");
     const [failure, setFailure] = useState("");
     const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
     const visible = notes.filter(
@@ -64,17 +68,53 @@ export default function NotesPage() {
         hiddenDepth = collapsed.has(note.id) ? depth : Infinity;
         return true;
     });
+    function actions(note: NoteItem) {
+        return {
+            onDelete: () => {
+                if (note.id === id) {
+                    if (editor.current) editor.current.remove();
+                    else setFailure("Дождись загрузки документа.");
+                } else setRemove(note);
+            },
+            onRename: () => {
+                if (note.id === id && editor.current) editor.current.rename();
+                else navigate(`/notes/${note.id}?rename=1`);
+            },
+            onDownload: () => {
+                if (note.id === id && editor.current) editor.current.download();
+                else downloadMarkdown(note.title, note.body);
+            },
+            onCopyLink: async () => {
+                try {
+                    await navigator.clipboard.writeText(new URL(`/notes/${note.id}`, window.location.origin).href);
+                    setNotice("Ссылка скопирована");
+                } catch {
+                    setFailure("Браузер не разрешил копирование. Открой документ и скопируй адрес из строки браузера.");
+                }
+            }
+        };
+    }
+    function deleted() {
+        setRemove(null);
+        setNotice("Документ перемещён в корзину");
+    }
     return (
         <Stack gap={3}>
             <Stack direction="row" alignItems="center" justifyContent="space-between" gap={1}>
                 <Typography variant="h4">Документы</Typography>
                 <Button
+                    aria-label="Новый документ"
                     variant="contained"
                     startIcon={<AddRounded />}
                     disabled={!canCreate}
                     onClick={() => setCreateOpen(true)}
                 >
-                    Новый документ
+                    <Box component="span" sx={{ display: { xs: "inline", sm: "none" } }}>
+                        Новый
+                    </Box>
+                    <Box component="span" sx={{ display: { xs: "none", sm: "inline" } }}>
+                        Новый документ
+                    </Box>
                 </Button>
             </Stack>
             {(failure || error) && (
@@ -148,7 +188,7 @@ export default function NotesPage() {
                         <MenuItem component="a" href="/api/Notes/export" download onClick={() => setMenu(null)}>
                             Скачать документы .zip
                         </MenuItem>
-                        <MenuItem component={Link} to="/trash" onClick={() => setMenu(null)}>
+                        <MenuItem component={Link} to="/trash?type=note" onClick={() => setMenu(null)}>
                             Корзина
                         </MenuItem>
                     </Menu>
@@ -183,56 +223,25 @@ export default function NotesPage() {
                     />
                     {(isLoading || importing) && <CircularProgress size={20} aria-label="Загрузка документов" />}
                     <List sx={{ p: 0, maxHeight: { lg: "70vh" }, overflowY: "auto" }}>
-                        {tree.map(({ note, depth }) => {
-                            const children = visible.some((item) => item.parentId === note.id);
-                            return (
-                                <Box
-                                    key={note.id}
-                                    sx={{
-                                        display: "flex",
-                                        alignItems: "center",
-                                        pl: Math.min(depth, 6) * 1.5,
-                                        mb: 0.25
-                                    }}
-                                >
-                                    {children ? (
-                                        <IconButton
-                                            size="small"
-                                            aria-label={`${collapsed.has(note.id) ? "Развернуть" : "Свернуть"} ${note.title}`}
-                                            aria-expanded={!collapsed.has(note.id)}
-                                            onClick={() =>
-                                                setCollapsed((previous) => {
-                                                    const next = new Set(previous);
-                                                    if (next.has(note.id)) next.delete(note.id);
-                                                    else next.add(note.id);
-                                                    return next;
-                                                })
-                                            }
-                                        >
-                                            {collapsed.has(note.id) ? (
-                                                <ChevronRightRounded sx={{ fontSize: 16 }} />
-                                            ) : (
-                                                <ExpandMoreRounded sx={{ fontSize: 16 }} />
-                                            )}
-                                        </IconButton>
-                                    ) : (
-                                        <DescriptionOutlined
-                                            sx={{ ml: 1, mr: 0.75, fontSize: 16, color: "text.disabled" }}
-                                        />
-                                    )}
-                                    <ListItemButton
-                                        selected={note.id === id}
-                                        onClick={() => navigate(`/notes/${note.id}`)}
-                                        sx={{ minWidth: 0, borderRadius: 1, px: 1, py: 0.5 }}
-                                    >
-                                        <ListItemText
-                                            primary={`${note.pinned ? "• " : ""}${note.title}`}
-                                            primaryTypographyProps={{ fontSize: 13, noWrap: true, title: note.title }}
-                                        />
-                                    </ListItemButton>
-                                </Box>
-                            );
-                        })}
+                        {tree.map(({ note, depth }) => (
+                            <NoteListItem
+                                key={note.id}
+                                note={note}
+                                depth={depth}
+                                selected={note.id === id}
+                                hasChildren={visible.some((item) => item.parentId === note.id)}
+                                collapsed={collapsed.has(note.id)}
+                                onToggle={() =>
+                                    setCollapsed((previous) => {
+                                        const next = new Set(previous);
+                                        if (next.has(note.id)) next.delete(note.id);
+                                        else next.add(note.id);
+                                        return next;
+                                    })
+                                }
+                                {...actions(note)}
+                            />
+                        ))}
                     </List>
                     {!isLoading && !visible.length && (
                         <Typography variant="body2" color="text.secondary">
@@ -240,7 +249,16 @@ export default function NotesPage() {
                         </Typography>
                     )}
                 </Stack>
-                <Box sx={{ minWidth: 0, width: "100%", maxWidth: 840, mx: "auto", px: { lg: 2 } }}>
+                <Box
+                    sx={{
+                        minWidth: 0,
+                        width: "100%",
+                        maxWidth: 840,
+                        mx: "auto",
+                        px: { lg: 2 },
+                        display: { xs: id || !visible.length ? "block" : "none", lg: "block" }
+                    }}
+                >
                     {id && (
                         <Button
                             component={Link}
@@ -253,7 +271,17 @@ export default function NotesPage() {
                         </Button>
                     )}
                     {selected ? (
-                        <NoteDocument key={selected.id} note={selected} notes={notes} />
+                        <NoteDocument
+                            key={selected.id}
+                            ref={editor}
+                            note={selected}
+                            notes={notes}
+                            focusTitle={params.get("rename") === "1"}
+                            onDeleted={() => {
+                                deleted();
+                                navigate("/notes");
+                            }}
+                        />
                     ) : (
                         <Stack gap={2} sx={{ py: { xs: 2, lg: 3 } }}>
                             <DescriptionOutlined sx={{ fontSize: 32, color: "text.disabled" }} />
@@ -290,22 +318,7 @@ export default function NotesPage() {
                                         )
                                         .slice(0, 6)
                                         .map((note) => (
-                                            <ListItemButton
-                                                key={note.id}
-                                                component={Link}
-                                                to={`/notes/${note.id}`}
-                                                sx={{ borderBottom: 1, borderColor: "divider", px: 0, py: 1.5 }}
-                                            >
-                                                <DescriptionOutlined
-                                                    sx={{ mr: 2, color: "text.secondary", fontSize: 20 }}
-                                                />
-                                                <ListItemText
-                                                    primary={note.title}
-                                                    secondary={dateTime(note.modified ?? note.created)}
-                                                    primaryTypographyProps={{ fontSize: 14, fontWeight: 600 }}
-                                                />
-                                                <ChevronRightRounded color="disabled" />
-                                            </ListItemButton>
+                                            <NoteListItem key={note.id} note={note} recent {...actions(note)} />
                                         ))}
                                 </List>
                             )}
@@ -313,6 +326,22 @@ export default function NotesPage() {
                     )}
                 </Box>
             </Box>
+            {remove && (
+                <DeleteMaterialDialog kind="note" item={remove} onClose={() => setRemove(null)} onDeleted={deleted} />
+            )}
+            <Snackbar
+                open={!!notice}
+                autoHideDuration={6000}
+                onClose={() => setNotice("")}
+                message={notice}
+                action={
+                    notice.includes("корзину") ? (
+                        <Button component={Link} to="/trash?type=note" color="inherit" onClick={() => setNotice("")}>
+                            Корзина
+                        </Button>
+                    ) : undefined
+                }
+            />
             {createOpen && <NewDocumentDialog onClose={() => setCreateOpen(false)} />}
         </Stack>
     );

@@ -1,8 +1,9 @@
-import { memo, useState } from "react";
+import { memo } from "react";
 import { Box, Card, CardActionArea, Divider, IconButton, Menu, MenuItem, Stack, Typography } from "@mui/material";
 import MoreHorizRounded from "@mui/icons-material/MoreHorizRounded";
 import ArrowForwardRounded from "@mui/icons-material/ArrowForwardRounded";
 import ScheduleRounded from "@mui/icons-material/ScheduleRounded";
+import useContextMenu from "@/hooks/useContextMenu";
 import type { TaskItem } from "@/common/models";
 import { localDate, stages } from "@/common/models";
 interface Props {
@@ -15,7 +16,8 @@ interface Props {
     onDrag: (id: string | null) => void;
 }
 function TaskCard({ task, source, onOpen, onToday, onStage, onDrag, onDelete }: Props) {
-    const [menu, setMenu] = useState<HTMLElement | null>(null);
+    const menu = useContextMenu();
+    const editable = task.canEdit !== false;
     const urgent = task.priority === "urgent" || task.priority === "high";
     const waiting = task.stage === "waiting";
     const today = localDate();
@@ -30,6 +32,8 @@ function TaskCard({ task, source, onOpen, onToday, onStage, onDrag, onDelete }: 
     return (
         <>
             <Card
+                onContextMenu={menu.triggerProps.onContextMenu}
+                onKeyDown={menu.triggerProps.onKeyDown}
                 variant="outlined"
                 draggable={task.canEdit !== false}
                 onDragStart={(event) => {
@@ -47,6 +51,8 @@ function TaskCard({ task, source, onOpen, onToday, onStage, onDrag, onDelete }: 
             >
                 <CardActionArea
                     onClick={onOpen}
+                    aria-haspopup="menu"
+                    aria-expanded={menu.open}
                     aria-label={`Открыть задачу: ${task.title}`}
                     sx={{ p: 2, display: "block", textAlign: "left" }}
                 >
@@ -110,54 +116,71 @@ function TaskCard({ task, source, onOpen, onToday, onStage, onDrag, onDelete }: 
                         )}
                     </Stack>
                 </CardActionArea>
-                {task.canEdit !== false && (
+                {editable && (
                     <IconButton
                         size="small"
                         aria-label={`Действия: ${task.title}`}
-                        onClick={(event) => setMenu(event.currentTarget)}
+                        onClick={menu.openButton}
+                        aria-haspopup="menu"
+                        aria-expanded={menu.open}
                         sx={{ position: "absolute", top: 8, right: 6, color: "text.secondary" }}
                     >
                         <MoreHorizRounded fontSize="small" />
                     </IconButton>
                 )}
             </Card>
-            <Menu anchorEl={menu} open={!!menu} onClose={() => setMenu(null)}>
+            <Menu {...menu.menuProps}>
                 <MenuItem
                     onClick={() => {
-                        setMenu(null);
-                        onToday();
+                        menu.close();
+                        onOpen();
                     }}
                 >
-                    {task.plannedFor === today ? "Убрать из плана на сегодня" : "На сегодня"}
+                    Открыть задачу
                 </MenuItem>
-                <Divider />
-                <Typography variant="caption" color="text.secondary" sx={{ px: 2, py: 0.5, display: "block" }}>
-                    Переместить
-                </Typography>
-                {stages
-                    .filter((stage) => stage.id !== task.stage)
-                    .map((stage) => (
-                        <MenuItem
-                            key={stage.id}
-                            onClick={() => {
-                                setMenu(null);
-                                onStage(stage.id);
-                            }}
-                        >
-                            <ArrowForwardRounded sx={{ fontSize: 16, mr: 1, color: "text.secondary" }} />
-                            {stage.label}
-                        </MenuItem>
-                    ))}
-                <Divider />
-                <MenuItem
-                    sx={{ color: "error.main" }}
-                    onClick={() => {
-                        setMenu(null);
-                        onDelete();
-                    }}
-                >
-                    Удалить
-                </MenuItem>
+                {editable && (
+                    <MenuItem
+                        onClick={() => {
+                            menu.close();
+                            onToday();
+                        }}
+                    >
+                        {task.plannedFor === today ? "Убрать из плана на сегодня" : "На сегодня"}
+                    </MenuItem>
+                )}
+                {editable && <Divider />}
+                {editable && (
+                    <Typography variant="caption" color="text.secondary" sx={{ px: 2, py: 0.5, display: "block" }}>
+                        Переместить
+                    </Typography>
+                )}
+                {editable &&
+                    stages
+                        .filter((stage) => stage.id !== task.stage)
+                        .map((stage) => (
+                            <MenuItem
+                                key={stage.id}
+                                onClick={() => {
+                                    menu.close();
+                                    onStage(stage.id);
+                                }}
+                            >
+                                <ArrowForwardRounded sx={{ fontSize: 16, mr: 1, color: "text.secondary" }} />
+                                {stage.label}
+                            </MenuItem>
+                        ))}
+                {editable && <Divider />}
+                {editable && (
+                    <MenuItem
+                        sx={{ color: "error.main" }}
+                        onClick={() => {
+                            menu.close();
+                            onDelete();
+                        }}
+                    >
+                        Удалить
+                    </MenuItem>
+                )}
             </Menu>
         </>
     );

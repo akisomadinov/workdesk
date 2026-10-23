@@ -41,6 +41,7 @@ import { dateTime, localDate, safeLink, stages } from "@/common/models";
 import type { TaskItem } from "@/common/models";
 import type { TaskValues } from "./validation";
 import TaskPropertiesDialog from "./tasks/TaskPropertiesDialog";
+import useContextMenu from "@/hooks/useContextMenu";
 import DeleteMaterialDialog from "@/common/DeleteMaterialDialog";
 import TaskDocuments from "./tasks/TaskDocuments";
 export default function TaskDrawer({ task, onClose }: { task: TaskItem; onClose: () => void }) {
@@ -60,7 +61,7 @@ export default function TaskDrawer({ task, onClose }: { task: TaskItem; onClose:
     const [confirm, setConfirm] = useState(false);
     const [closeWarning, setCloseWarning] = useState(false);
     const [properties, setProperties] = useState(false);
-    const [menu, setMenu] = useState<HTMLElement | null>(null);
+    const menu = useContextMenu();
     const [tab, setTab] = useState<"description" | "notes" | "documents">("description");
     const [editing, setEditing] = useState(false);
     const readOnly = task.canEdit === false;
@@ -104,6 +105,8 @@ export default function TaskDrawer({ task, onClose }: { task: TaskItem; onClose:
                 }}
             >
                 <Stack
+                    onContextMenu={readOnly ? undefined : menu.triggerProps.onContextMenu}
+                    onKeyDown={readOnly ? undefined : menu.triggerProps.onKeyDown}
                     direction="row"
                     alignItems="center"
                     gap={1}
@@ -130,7 +133,12 @@ export default function TaskDrawer({ task, onClose }: { task: TaskItem; onClose:
                         </IconButton>
                     </Tooltip>
                     {!readOnly && (
-                        <IconButton aria-label="Другие действия" onClick={(event) => setMenu(event.currentTarget)}>
+                        <IconButton
+                            aria-label="Другие действия"
+                            aria-haspopup="menu"
+                            aria-expanded={menu.open}
+                            onClick={menu.openButton}
+                        >
                             <MoreHorizRounded />
                         </IconButton>
                     )}
@@ -517,10 +525,10 @@ export default function TaskDrawer({ task, onClose }: { task: TaskItem; onClose:
                     </Box>
                 </Stack>
             </Drawer>
-            <Menu anchorEl={menu} open={!!menu} onClose={() => setMenu(null)}>
+            <Menu {...menu.menuProps}>
                 <MenuItem
                     onClick={() => {
-                        setMenu(null);
+                        menu.close();
                         void editor.flush();
                     }}
                 >
@@ -528,7 +536,7 @@ export default function TaskDrawer({ task, onClose }: { task: TaskItem; onClose:
                 </MenuItem>
                 <MenuItem
                     onClick={() => {
-                        setMenu(null);
+                        menu.close();
                         setConfirm(true);
                     }}
                 >
@@ -538,7 +546,7 @@ export default function TaskDrawer({ task, onClose }: { task: TaskItem; onClose:
                 <MenuItem
                     sx={{ color: "error.main" }}
                     onClick={() => {
-                        setMenu(null);
+                        menu.close();
                         setRemove(true);
                     }}
                 >

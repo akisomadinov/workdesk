@@ -1,6 +1,7 @@
 import { Box, Button, IconButton, Stack, Typography } from "@mui/material";
 import CheckRounded from "@mui/icons-material/CheckRounded";
 import type { TaskItem } from "@/common/models";
+import useContextMenu from "@/hooks/useContextMenu";
 import TodayTaskMenu from "./TodayTaskMenu";
 import { isOverdue, planDate } from "./today";
 interface Props {
@@ -12,6 +13,7 @@ interface Props {
     onDelete: () => void;
 }
 export default function TodayTaskRow({ task, today, busy, onOpen, onChange, onDelete }: Props) {
+    const menu = useContextMenu();
     const waiting = task.stage === "waiting";
     const text = waiting
         ? task.blocker || "Уточни, чей ответ или какое решение нужно"
@@ -19,6 +21,8 @@ export default function TodayTaskRow({ task, today, busy, onOpen, onChange, onDe
     const editable = task.canEdit !== false;
     return (
         <Stack
+            onContextMenu={menu.triggerProps.onContextMenu}
+            onKeyDown={menu.triggerProps.onKeyDown}
             direction="row"
             gap={1.5}
             alignItems="flex-start"
@@ -38,6 +42,8 @@ export default function TodayTaskRow({ task, today, busy, onOpen, onChange, onDe
                 <Button
                     color="inherit"
                     onClick={onOpen}
+                    aria-haspopup="menu"
+                    aria-expanded={menu.open}
                     sx={{
                         p: 0,
                         minWidth: 0,
@@ -106,16 +112,15 @@ export default function TodayTaskRow({ task, today, busy, onOpen, onChange, onDe
                     )}
                 </Stack>
             </Box>
-            {editable && (
-                <TodayTaskMenu
-                    task={task}
-                    today={today}
-                    busy={busy}
-                    onOpen={onOpen}
-                    onChange={onChange}
-                    onDelete={onDelete}
-                />
-            )}
+            <TodayTaskMenu
+                menu={menu}
+                task={task}
+                today={today}
+                busy={busy}
+                onOpen={onOpen}
+                onChange={onChange}
+                onDelete={onDelete}
+            />
         </Stack>
     );
 }
