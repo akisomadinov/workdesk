@@ -60,10 +60,10 @@ function ConnectionCard({ connection }: { connection: ConnectionResponse }) {
         error: "Ошибка ответа"
     };
     return (
-        <Card variant="outlined" sx={{ p: 3 }}>
+        <Card variant="outlined" sx={{ p: { xs: 2, sm: 2.5 } }}>
             <Stack gap={2}>
                 <Stack direction="row" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={2}>
-                    <Stack direction="row" gap={1.5} alignItems="center">
+                    <Stack direction="row" gap={1.5} alignItems="center" sx={{ minWidth: 0, maxWidth: "100%" }}>
                         <Box
                             sx={{
                                 bgcolor: "background.default",
@@ -76,14 +76,16 @@ function ConnectionCard({ connection }: { connection: ConnectionResponse }) {
                         >
                             {connection.provider === "gitlab" ? "GL" : "GH"}
                         </Box>
-                        <Box>
-                            <Typography variant="h6">{connection.name}</Typography>
+                        <Box sx={{ minWidth: 0 }}>
+                            <Typography variant="h6" sx={{ overflowWrap: "anywhere" }}>
+                                {connection.name}
+                            </Typography>
                             <Typography variant="caption" color="text.secondary" sx={{ overflowWrap: "anywhere" }}>
                                 {connection.apiUrl}
                             </Typography>
                         </Box>
                     </Stack>
-                    <Stack direction="row" gap={1} alignItems="center">
+                    <Stack direction="row" gap={1} alignItems="center" flexWrap="wrap">
                         {connection.requiresVpn && <Chip icon={<LockOutlined />} label="Через VPN" size="small" />}
                         <Chip
                             label={
@@ -302,27 +304,37 @@ export default function ConnectionsPage() {
     }
     return (
         <Stack gap={3}>
-            <Stack direction="row" justifyContent="space-between" gap={2} alignItems="center">
+            <Stack
+                direction={{ xs: "column", sm: "row" }}
+                justifyContent="space-between"
+                gap={2}
+                alignItems={{ xs: "start", sm: "center" }}
+            >
                 <Box>
-                    <Typography variant="h4">Подключения</Typography>
+                    <Typography variant="h5">Подключения</Typography>
                     <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
                         Каждый сервер синхронизируется независимо.
                     </Typography>
                 </Box>
-                <Button variant="contained" startIcon={<AddRounded />} onClick={() => setOpen(true)}>
+                <Button
+                    variant="contained"
+                    startIcon={<AddRounded />}
+                    onClick={() => setOpen(true)}
+                    sx={{ flexShrink: 0 }}
+                >
                     Добавить сервер
                 </Button>
             </Stack>
-            <Alert severity="info">
+            <Typography variant="body2" color="text.secondary">
                 Импортируем назначенные тебе задачи. Личная доска и заметки не отправляются в GitLab/GitHub. Проверяем
                 обновления каждые 5 минут, пока Workdesk запущен.
-            </Alert>
+            </Typography>
             {queryError && <Alert severity="error">{message(queryError)}</Alert>}
             {connections.length === 0 && (
                 <Box
                     sx={{
                         textAlign: "center",
-                        py: 7,
+                        py: 4,
                         px: 3,
                         bgcolor: "background.paper",
                         borderRadius: 3,

@@ -19,7 +19,6 @@ import {
 } from "@mui/material";
 import WbSunnyOutlined from "@mui/icons-material/WbSunnyOutlined";
 import ViewKanbanOutlined from "@mui/icons-material/ViewKanbanOutlined";
-import CableRounded from "@mui/icons-material/CableRounded";
 import MenuRounded from "@mui/icons-material/MenuRounded";
 import LayersRounded from "@mui/icons-material/LayersRounded";
 import DescriptionOutlined from "@mui/icons-material/DescriptionOutlined";
@@ -135,12 +134,15 @@ function WorkspaceLayout() {
             <Divider sx={{ my: 1.5 }} />
             <List>{navItem({ path: "/reports", label: "Итоги по milestone", icon: <AssessmentOutlined /> })}</List>
             <Box sx={{ mt: "auto", pt: 4 }}>
-                <List>
-                    {navItem({ path: "/connections", label: "Подключения", icon: <CableRounded /> })}
-                    {navItem({ path: "/settings", label: "Настройки", icon: <SettingsOutlined /> })}
-                </List>
                 <Divider sx={{ my: 1.5 }} />
-                <Stack direction="row" gap={1.2} alignItems="center" sx={{ px: 1 }}>
+                <ListItemButton
+                    component={Link}
+                    to="/settings"
+                    aria-label={`Настройки: ${session?.name ?? "Мой аккаунт"}`}
+                    selected={location.pathname.startsWith("/settings")}
+                    onClick={() => setMenuOpen(false)}
+                    sx={{ px: 1, py: 1.25, gap: 1.2, borderRadius: 1.5 }}
+                >
                     <Avatar
                         sx={{
                             width: 30,
@@ -152,15 +154,16 @@ function WorkspaceLayout() {
                     >
                         {session?.name?.slice(0, 1) ?? "Я"}
                     </Avatar>
-                    <Box sx={{ minWidth: 0 }}>
+                    <Box sx={{ minWidth: 0, flex: 1 }}>
                         <Typography noWrap variant="body2" fontWeight={600}>
                             {session?.name ?? "Мой аккаунт"}
                         </Typography>
                         <Typography variant="caption" color="text.secondary">
-                            {session?.sharedMode ? "Общий сервер" : "Локальное пространство"}
+                            Настройки
                         </Typography>
                     </Box>
-                </Stack>
+                    <SettingsOutlined sx={{ fontSize: 18, color: "text.secondary", flexShrink: 0 }} />
+                </ListItemButton>
             </Box>
         </Stack>
     );

@@ -1,8 +1,8 @@
 import { lazy } from "react";
+import { Navigate } from "react-router-dom";
 const TodayPage = lazy(() => import("@/pages/TodayPage"));
 const TrashPage = lazy(() => import("@/pages/TrashPage"));
 const WorkspacePage = lazy(() => import("@/pages/WorkspacePage"));
-const ConnectionsPage = lazy(() => import("@/pages/ConnectionsPage"));
 export const NotesPage = lazy(() => import("@/pages/NotesPage"));
 const TeamPage = lazy(() => import("@/pages/TeamPage"));
 const ReportsPage = lazy(() => import("@/pages/ReportsPage"));
@@ -19,7 +19,7 @@ export default function useGetPages() {
         { path: "/reports", label: "Итоги", component: <ReportsPage /> },
         { path: "/notifications", label: "Уведомления", component: <NotificationsPage /> },
         { path: "/team", label: "Команда", component: <TeamPage /> },
-        { path: "/settings", label: "Настройки", component: <SettingsPage /> },
-        { path: "/connections", label: "Подключения", component: <ConnectionsPage /> }
+        { path: "/settings/*", label: "Настройки", component: <SettingsPage /> },
+        { path: "/connections", label: "Подключения", component: <Navigate to="/settings/connections" replace /> }
     ];
 }

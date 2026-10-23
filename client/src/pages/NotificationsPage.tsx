@@ -1,41 +1,12 @@
-import {
-    Alert,
-    Box,
-    Button,
-    Card,
-    Chip,
-    Dialog,
-    DialogTitle,
-    DialogContent,
-    DialogActions,
-    FormControlLabel,
-    Stack,
-    Switch,
-    TextField,
-    Typography
-} from "@mui/material";
-import { useForm } from "react-hook-form";
-import { useEffect, useState } from "react";
+import { Alert, Box, Button, Card, Chip, Stack, Typography } from "@mui/material";
+import { useState } from "react";
 import { Link } from "react-router-dom";
-import {
-    useNotificationsGetQuery,
-    useNotificationsReadMutation,
-    useNotificationsTelegramQuery,
-    useNotificationsConfigureMutation
-} from "@/api/autogen/workdesk";
+import { useNotificationsGetQuery, useNotificationsReadMutation } from "@/api/autogen/workdesk";
 import { dateTime, message, safeLink } from "@/common/models";
 export default function NotificationsPage() {
     const { data: items = [], error } = useNotificationsGetQuery(undefined, { pollingInterval: 15000 });
-    const { data: settings } = useNotificationsTelegramQuery();
     const [read] = useNotificationsReadMutation();
-    const [configure] = useNotificationsConfigureMutation();
-    const form = useForm({ defaultValues: { chatId: "", token: "", enabled: false } });
-    const [settingsOpen, setSettingsOpen] = useState(false);
-    const [notice, setNotice] = useState("");
     const [failure, setFailure] = useState("");
-    useEffect(() => {
-        if (settings) form.reset({ chatId: settings.chatId ?? "", token: "", enabled: settings.enabled ?? false });
-    }, [settings, form]);
     const delivery: Record<string, string> = {
         off: "В приложении",
         pending: "В очереди Telegram",
@@ -46,76 +17,29 @@ export default function NotificationsPage() {
     };
     return (
         <Stack gap={3}>
-            <Stack direction="row" justifyContent="space-between" alignItems="center" gap={2}>
+            <Stack
+                direction={{ xs: "column", sm: "row" }}
+                justifyContent="space-between"
+                alignItems={{ xs: "start", sm: "center" }}
+                gap={2}
+            >
                 <Box>
                     <Typography variant="h4">Уведомления</Typography>
                     <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
                         Новые задачи, комментарии в MR/PR и приглашения.
                     </Typography>
                 </Box>
-                <Button color="inherit" variant="outlined" onClick={() => setSettingsOpen(true)}>
+                <Button
+                    component={Link}
+                    to="/settings/notifications"
+                    color="inherit"
+                    variant="outlined"
+                    sx={{ flexShrink: 0 }}
+                >
                     Настроить Telegram
                 </Button>
             </Stack>
-            <Dialog open={settingsOpen} onClose={() => setSettingsOpen(false)}>
-                <DialogTitle>Уведомления в Telegram</DialogTitle>
-                <DialogContent>
-                    <form
-                        onSubmit={form.handleSubmit(async (values) => {
-                            setFailure("");
-                            try {
-                                await configure({
-                                    saveTelegramRequest: { ...values, token: values.token || null }
-                                }).unwrap();
-                                setNotice("Настройки сохранены. Новые события будут отправляться выбранным способом.");
-                                form.setValue("token", "");
-                            } catch (problem) {
-                                setFailure(message(problem));
-                            }
-                        })}
-                    >
-                        <Stack gap={2}>
-                            <Typography variant="h6">Telegram</Typography>
-                            <Typography variant="body2" color="text.secondary">
-                                Создай бота через BotFather, начни с ним диалог и укажи chat_id. Передаём заголовок
-                                события и ссылку, без текста рабочих заметок.
-                            </Typography>
-                            <Stack direction={{ xs: "column", sm: "row" }} gap={2}>
-                                <TextField label="Chat ID" {...form.register("chatId")} />
-                                <TextField
-                                    label={settings?.hasToken ? "Новый токен (если меняешь)" : "Токен бота"}
-                                    type="password"
-                                    autoComplete="off"
-                                    {...form.register("token")}
-                                />
-                            </Stack>
-                            <FormControlLabel
-                                control={<Switch {...form.register("enabled")} checked={form.watch("enabled")} />}
-                                label="Отправлять новые уведомления в Telegram"
-                            />
-                            {notice && <Alert severity="success">{notice}</Alert>}
-                            {failure && <Alert severity="error">{failure}</Alert>}
-                            <Button
-                                variant="outlined"
-                                type="submit"
-                                disabled={form.formState.isSubmitting}
-                                sx={{ alignSelf: "start" }}
-                            >
-                                Сохранить настройки
-                            </Button>
-                        </Stack>
-                    </form>
-                    <Alert severity="info" sx={{ mt: 2 }}>
-                        Первая загрузка задач проходит без рассылки старых событий. Комментарии отслеживаются для твоих
-                        MR/PR в явно выбранных проектах. При неопределённом результате отправки повтор не выполняется
-                        автоматически.
-                    </Alert>
-                </DialogContent>
-                <DialogActions>
-                    <Button onClick={() => setSettingsOpen(false)}>Готово</Button>
-                </DialogActions>
-            </Dialog>
-            {error && <Alert severity="error">{message(error)}</Alert>}
+            {(failure || error) && <Alert severity="error">{failure || message(error)}</Alert>}
             {items.length === 0 && (
                 <Typography color="text.secondary">
                     Новые события появятся здесь после синхронизации подключений.
