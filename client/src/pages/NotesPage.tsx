@@ -125,7 +125,7 @@ export default function NotesPage() {
             <Box
                 sx={{
                     display: "grid",
-                    gridTemplateColumns: { xs: "1fr", lg: "240px minmax(0, 1fr)" },
+                    gridTemplateColumns: { xs: "minmax(0, 1fr)", lg: "240px minmax(0, 1fr)" },
                     gap: { xs: 2, lg: 4 },
                     alignItems: "start"
                 }}
@@ -133,6 +133,7 @@ export default function NotesPage() {
                 <Stack
                     gap={1.5}
                     sx={{
+                        minWidth: 0,
                         display: { xs: id ? "none" : "flex", lg: "flex" },
                         borderRight: { lg: "1px solid" },
                         borderColor: { lg: "divider" },
