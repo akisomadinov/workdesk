@@ -1,5 +1,6 @@
 import { z } from "zod";
 export const taskSchema = z.object({
+    documentIds: z.array(z.string().uuid()).max(50, "До 50 документов"),
     workspaceId: z.string(),
     assigneeId: z.string(),
     milestone: z.string().max(200, "До 200 символов"),

@@ -2,7 +2,7 @@ using Workdesk.Data;
 
 namespace Workdesk.Services;
 
-public sealed class WorkItemResponse(WorkItem task, bool canEdit = true)
+public sealed class WorkItemResponse(WorkItem task, bool canEdit = true, Guid[]? documentIds = null)
 {
     public Guid OwnerId { get; } = task.OwnerId;
     public Guid? WorkspaceId { get; } = task.WorkspaceId;
@@ -15,6 +15,7 @@ public sealed class WorkItemResponse(WorkItem task, bool canEdit = true)
     public string Project { get; } = task.Project;
     public string Description { get; } = task.Description;
     public string Notes { get; } = task.Notes;
+    public Guid[] DocumentIds { get; } = documentIds ?? task.DocumentIds;
     public string NextStep { get; } = task.NextStep;
     public string Blocker { get; } = task.Blocker;
     public string Stage { get; } = task.Stage;
@@ -41,6 +42,7 @@ public sealed class SaveTaskRequest
     public string Project { get; set; } = "";
     public string Description { get; set; } = "";
     public string Notes { get; set; } = "";
+    public Guid[]? DocumentIds { get; set; }
     public string NextStep { get; set; } = "";
     public string Blocker { get; set; } = "";
     public string Stage { get; set; } = "inbox";

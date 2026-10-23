@@ -487,6 +487,7 @@ export type SaveTelegramRequest = {
 };
 export type WorkItemResponse = {
     canEdit?: boolean;
+    documentIds?: string[] | null;
 };
 export type WorkItemResponseRead = {
     ownerId?: string;
@@ -500,6 +501,7 @@ export type WorkItemResponseRead = {
     project?: string | null;
     description?: string | null;
     notes?: string | null;
+    documentIds?: string[] | null;
     nextStep?: string | null;
     blocker?: string | null;
     stage?: string | null;
@@ -525,6 +527,7 @@ export type SaveTaskRequest = {
     project?: string | null;
     description?: string | null;
     notes?: string | null;
+    documentIds?: string[] | null;
     nextStep?: string | null;
     blocker?: string | null;
     stage?: string | null;

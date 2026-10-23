@@ -11,12 +11,14 @@ export default function NewTaskDialog({
     open,
     onClose,
     onCreated,
-    today
+    today,
+    stage = "inbox"
 }: {
     open: boolean;
     onClose: () => void;
     onCreated: (id: string) => void;
     today: boolean;
+    stage?: TaskValues["stage"];
 }) {
     const { scope } = useWorkspaceStore();
     const [save, { isLoading }] = useTasksSaveMutation();
@@ -25,6 +27,7 @@ export default function NewTaskDialog({
         resolver: zodResolver(taskSchema),
         mode: "onChange",
         defaultValues: {
+            documentIds: [],
             workspaceId: "",
             assigneeId: "",
             milestone: "",
@@ -48,7 +51,7 @@ export default function NewTaskDialog({
                     workspaceId: ["mine", "all"].includes(scope) ? null : scope,
                     assigneeId: null,
                     plannedFor: today ? localDate() : null,
-                    stage: today ? "planned" : "inbox",
+                    stage: today ? "planned" : stage,
                     revision: 0
                 }
             }).unwrap();
@@ -79,8 +82,13 @@ export default function NewTaskDialog({
                             error={!!form.formState.errors.project}
                             helperText={form.formState.errors.project?.message}
                         />
-                        <TextField label="Описание" multiline minRows={3} {...form.register("description")} />
-                        <TextField label="С чего начать" {...form.register("nextStep")} />
+                        <TextField
+                            label="Следующий шаг"
+                            placeholder="Например, проверить ответ API"
+                            multiline
+                            minRows={2}
+                            {...form.register("nextStep")}
+                        />
                     </Stack>
                 </DialogContent>
                 <DialogActions sx={{ p: 3 }}>

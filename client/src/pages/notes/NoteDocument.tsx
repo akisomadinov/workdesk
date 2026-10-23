@@ -44,6 +44,7 @@ export default function NoteDocument({ note, notes }: { note: NoteItem; notes: N
     const [archiveOpen, setArchiveOpen] = useState(false);
     const { data: history = [] } = useNotesHistoryQuery({ id: note.id }, { skip: !historyOpen });
     const navigate = useNavigate();
+    const relatedTasks = tasks.filter((task) => task.documentIds?.includes(note.id));
     const backlinks = notes.filter((other) => other.id !== note.id && linksTo(other.body, note));
     return (
         <Stack gap={2}>
@@ -303,6 +304,23 @@ export default function NoteDocument({ note, notes }: { note: NoteItem; notes: N
             <Typography variant="caption" color="text.secondary">
                 Изменено {dateTime(note.modified ?? note.created)}
             </Typography>
+            {relatedTasks.length > 0 && (
+                <Box sx={{ borderTop: 1, borderColor: "divider", pt: 2 }}>
+                    <Typography variant="h6">Связанные задачи</Typography>
+                    {relatedTasks.map((task) => (
+                        <Button
+                            key={task.id}
+                            color="inherit"
+                            sx={{ display: "flex", textAlign: "left", justifyContent: "flex-start" }}
+                            onClick={async () => {
+                                if (await editor.flush()) navigate(`/board?task=${task.id}`);
+                            }}
+                        >
+                            {task.title}
+                        </Button>
+                    ))}
+                </Box>
+            )}
             {backlinks.length > 0 && (
                 <Box sx={{ borderTop: 1, borderColor: "divider", pt: 2 }}>
                     <Typography variant="h6">Ссылаются на эту заметку</Typography>

@@ -1,9 +1,9 @@
-import { lazy, useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import {
     Alert,
     Box,
     Button,
-    Chip,
+    IconButton,
     Tabs,
     Tab,
     Divider,
@@ -22,10 +22,14 @@ import NewDocumentDialog from "@/common/NewDocumentDialog";
 import { useNotes } from "@/hooks/useNotebook";
 import AddRounded from "@mui/icons-material/AddRounded";
 import SearchRounded from "@mui/icons-material/SearchRounded";
+import CloseRounded from "@mui/icons-material/CloseRounded";
+import WbSunnyOutlined from "@mui/icons-material/WbSunnyOutlined";
+import TaskBoard from "./tasks/TaskBoard";
+import type { TaskValues } from "./validation";
 import ViewKanbanOutlined from "@mui/icons-material/ViewKanbanOutlined";
 import { Link } from "react-router-dom";
 import useTasks from "@/hooks/useTasks";
-import { localDate, message, sourceLabel, stages, taskCount } from "@/common/models";
+import { localDate, message, sourceLabel, taskCount } from "@/common/models";
 import type { TaskItem } from "@/common/models";
 import { useUiStore } from "@/stores/useUiStore";
 import TaskCard from "./TaskCard";
@@ -40,7 +44,7 @@ export default function WorkspacePage({ view }: { view: "today" | "board" | "inb
     const { scope } = useWorkspaceStore();
     const { data: session } = useAuthSessionQuery();
     const { data: spaces = [] } = useTeamGetQuery();
-    const [params] = useSearchParams();
+    const [params, setParams] = useSearchParams();
     const { query, source, selected, setQuery, setSource, select } = useUiStore();
     const { notes } = useNotes();
     const recentNotes = notes
@@ -53,6 +57,9 @@ export default function WorkspacePage({ view }: { view: "today" | "board" | "inb
         .slice(0, 5);
     const [documentOpen, setDocumentOpen] = useState(false);
     const [create, setCreate] = useState(false);
+    const [createStage, setCreateStage] = useState<TaskValues["stage"]>("inbox");
+    const [todayOnly, setTodayOnly] = useState(false);
+    const canCreate = ["mine", "all"].includes(scope) || spaces.find((space) => space.id === scope)?.role !== "reader";
     const [notice, setNotice] = useState({ key: 0, text: "" });
     const [dragged, setDragged] = useState<string | null>(null);
     const [today, setToday] = useState(localDate());
@@ -84,6 +91,7 @@ export default function WorkspacePage({ view }: { view: "today" | "board" | "inb
                 : active;
     const filtered = base.filter(
         (task) =>
+            (view !== "board" || !todayOnly || task.plannedFor === today) &&
             (source === "all" || (source === "local" ? !task.connectionId : task.connectionId === source)) &&
             `${task.title} ${task.project} ${task.description} ${task.notes} ${task.nextStep}`
                 .toLocaleLowerCase("ru-RU")
@@ -94,7 +102,7 @@ export default function WorkspacePage({ view }: { view: "today" | "board" | "inb
     const titles = { today: "Сегодня", board: "Задачи", inbox: "Задачи", archive: "Задачи" };
     const captions = {
         today: "Твой план на день и документы под рукой.",
-        board: "От новых задач до готового результата.",
+        board: "Выбери задачу и продолжи с ближайшего шага.",
         inbox: "Разбери новые задачи и выбери, что делать дальше.",
         archive: "Завершённые истории и заметки, которые можно вернуть."
     };
@@ -114,7 +122,7 @@ export default function WorkspacePage({ view }: { view: "today" | "board" | "inb
                 source={sourceLabel(task.connectionId, connections)}
                 onOpen={() => select(task.id)}
                 onToday={() => void change(task, { plannedFor: task.plannedFor === today ? null : today })}
-                onDone={() => void change(task, { stage: "done" })}
+                onStage={(stage) => void change(task, { stage })}
                 onDrag={setDragged}
             />
         );
@@ -129,7 +137,11 @@ export default function WorkspacePage({ view }: { view: "today" | "board" | "inb
                         </Typography>
                     )}
                     <Typography variant="h4">{titles[view]}</Typography>
-                    <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                    <Typography
+                        variant="body2"
+                        color="text.secondary"
+                        sx={{ mt: 1, display: { xs: "none", sm: "block" } }}
+                    >
                         {captions[view]}
                     </Typography>
                 </Box>
@@ -140,7 +152,10 @@ export default function WorkspacePage({ view }: { view: "today" | "board" | "inb
                     }
                     variant="contained"
                     startIcon={<AddRounded />}
-                    onClick={() => setCreate(true)}
+                    onClick={() => {
+                        setCreateStage("inbox");
+                        setCreate(true);
+                    }}
                 >
                     Новая задача
                 </Button>
@@ -155,7 +170,8 @@ export default function WorkspacePage({ view }: { view: "today" | "board" | "inb
             <Box
                 sx={{
                     display: "grid",
-                    gridTemplateColumns: view === "today" ? { xs: "1fr", lg: "minmax(0, 1fr) 280px" } : "1fr",
+                    gridTemplateColumns:
+                        view === "today" ? { xs: "minmax(0, 1fr)", lg: "minmax(0, 1fr) 280px" } : "minmax(0, 1fr)",
                     gap: 4
                 }}
             >
@@ -171,16 +187,27 @@ export default function WorkspacePage({ view }: { view: "today" | "board" | "inb
                     {error && <Alert severity="error">{message(error)}</Alert>}
                     {isLoading && <LinearProgress />}
                     {(base.length > 0 || query || source !== "all") && (
-                        <Stack direction={{ xs: "column", sm: "row" }} gap={1.5}>
+                        <Stack direction="row" gap={1.5} flexWrap="wrap" alignItems="center">
                             <TextField
                                 placeholder="Поиск по задачам и заметкам"
                                 value={query}
                                 onChange={(event) => setQuery(event.target.value)}
                                 slotProps={{
-                                    input: { startAdornment: <SearchRounded sx={{ color: "text.disabled", mr: 1 }} /> },
+                                    input: {
+                                        startAdornment: <SearchRounded sx={{ color: "text.disabled", mr: 1 }} />,
+                                        endAdornment: query ? (
+                                            <IconButton
+                                                size="small"
+                                                aria-label="Очистить поиск"
+                                                onClick={() => setQuery("")}
+                                            >
+                                                <CloseRounded fontSize="small" />
+                                            </IconButton>
+                                        ) : undefined
+                                    },
                                     htmlInput: { "aria-label": "Поиск по задачам" }
                                 }}
-                                sx={{ maxWidth: 440 }}
+                                sx={{ width: { xs: "100%", sm: 360 }, flexShrink: 0 }}
                             />
                             {connections.length > 0 && (
                                 <TextField
@@ -191,7 +218,7 @@ export default function WorkspacePage({ view }: { view: "today" | "board" | "inb
                                     sx={{ width: { xs: "100%", sm: 230 } }}
                                 >
                                     <MenuItem value="all">Все источники</MenuItem>
-                                    <MenuItem value="local">Личные задачи</MenuItem>
+                                    <MenuItem value="local">Созданы в Workdesk</MenuItem>
                                     {connections.map((connection) => (
                                         <MenuItem key={connection.id} value={connection.id}>
                                             {connection.name}
@@ -199,14 +226,28 @@ export default function WorkspacePage({ view }: { view: "today" | "board" | "inb
                                     ))}
                                 </TextField>
                             )}
-                            <Chip
-                                label={taskCount(filtered.length)}
-                                variant="outlined"
-                                sx={{ alignSelf: "center", ml: { sm: "auto" } }}
-                            />
+                            {view === "board" && (
+                                <Button
+                                    color={todayOnly ? "primary" : "inherit"}
+                                    variant={todayOnly ? "outlined" : "text"}
+                                    startIcon={<WbSunnyOutlined />}
+                                    aria-pressed={todayOnly}
+                                    onClick={() => setTodayOnly(!todayOnly)}
+                                    sx={{ flexShrink: 0 }}
+                                >
+                                    На сегодня
+                                </Button>
+                            )}
+                            <Typography
+                                variant="caption"
+                                color="text.secondary"
+                                sx={{ alignSelf: "center", ml: { sm: "auto" }, whiteSpace: "nowrap" }}
+                            >
+                                {taskCount(filtered.length)}
+                            </Typography>
                         </Stack>
                     )}
-                    {!isLoading && base.length === 0 && (
+                    {!isLoading && base.length === 0 && view !== "board" && (
                         <Box
                             sx={{
                                 textAlign: "center",
@@ -251,7 +292,10 @@ export default function WorkspacePage({ view }: { view: "today" | "board" | "inb
                                                     !["mine", "all"].includes(scope) &&
                                                     spaces.find((space) => space.id === scope)?.role === "reader"
                                                 }
-                                                onClick={() => setCreate(true)}
+                                                onClick={() => {
+                                                    setCreateStage("inbox");
+                                                    setCreate(true);
+                                                }}
                                             >
                                                 Добавить задачу
                                             </Button>
@@ -265,62 +309,42 @@ export default function WorkspacePage({ view }: { view: "today" | "board" | "inb
                         </Box>
                     )}
                     {base.length > 0 && filtered.length === 0 && (
-                        <Alert severity="info">По этим условиям задач нет. Измени поиск или источник.</Alert>
+                        <Alert
+                            severity="info"
+                            action={
+                                <Button
+                                    size="small"
+                                    onClick={() => {
+                                        setQuery("");
+                                        setSource("all");
+                                        setTodayOnly(false);
+                                    }}
+                                >
+                                    Сбросить
+                                </Button>
+                            }
+                        >
+                            По этим условиям задач нет.
+                        </Alert>
                     )}
-                    {filtered.length > 0 &&
-                        (view === "board" ? (
-                            <Box
-                                sx={{
-                                    display: "grid",
-                                    gridTemplateColumns: "repeat(5, minmax(225px, 1fr))",
-                                    gap: 2,
-                                    overflowX: "auto",
-                                    pb: 2
-                                }}
-                            >
-                                {stages.map((stage) => (
-                                    <Box
-                                        key={stage.id}
-                                        onDragOver={(event) => {
-                                            if (dragged) event.preventDefault();
-                                        }}
-                                        onDrop={(event) => {
-                                            event.preventDefault();
-                                            const id = event.dataTransfer.getData("text/workdesk-task");
-                                            const task = tasks.find((item) => item.id === id);
-                                            if (task && task.stage !== stage.id) void change(task, { stage: stage.id });
-                                            setDragged(null);
-                                        }}
-                                        sx={{ bgcolor: "background.default", minHeight: 330 }}
-                                    >
-                                        <Stack direction="row" gap={1} alignItems="center" sx={{ mb: 2, px: 0.5 }}>
-                                            <Box
-                                                sx={{
-                                                    width: 7,
-                                                    height: 7,
-                                                    borderRadius: "50%",
-                                                    bgcolor:
-                                                        stage.id === "doing"
-                                                            ? "primary.main"
-                                                            : stage.id === "done"
-                                                              ? "success.main"
-                                                              : "text.disabled"
-                                                }}
-                                            />
-                                            <Typography variant="body2" fontWeight={650}>
-                                                {stage.label}
-                                            </Typography>
-                                            <Typography variant="caption" color="text.secondary">
-                                                {filtered.filter((task) => task.stage === stage.id).length}
-                                            </Typography>
-                                        </Stack>
-                                        <Stack gap={1.5}>
-                                            {filtered.filter((task) => task.stage === stage.id).map(card)}
-                                        </Stack>
-                                    </Box>
-                                ))}
-                            </Box>
-                        ) : (
+                    {view === "board" && !isLoading ? (
+                        <TaskBoard
+                            tasks={filtered}
+                            renderCard={card}
+                            canCreate={canCreate}
+                            dragged={dragged}
+                            onCreate={(stage) => {
+                                setCreateStage(stage);
+                                setCreate(true);
+                            }}
+                            onMove={(id, stage) => {
+                                const task = tasks.find((item) => item.id === id);
+                                if (task && task.stage !== stage) void change(task, { stage });
+                                setDragged(null);
+                            }}
+                        />
+                    ) : (
+                        filtered.length > 0 && (
                             <Box
                                 sx={{
                                     display: "grid",
@@ -331,7 +355,8 @@ export default function WorkspacePage({ view }: { view: "today" | "board" | "inb
                             >
                                 {filtered.map(card)}
                             </Box>
-                        ))}
+                        )
+                    )}
                 </Stack>
                 {view === "today" && (
                     <Stack gap={2} sx={{ minWidth: 0 }}>
@@ -383,8 +408,31 @@ export default function WorkspacePage({ view }: { view: "today" | "board" | "inb
                 )}
             </Box>
             {documentOpen && <NewDocumentDialog onClose={() => setDocumentOpen(false)} />}
-            <NewTaskDialog open={create} onClose={() => setCreate(false)} onCreated={select} today={view === "today"} />
-            {selectedTask && <TaskDrawer key={selectedTask.id} task={selectedTask} onClose={() => select(null)} />}
+            {create && (
+                <NewTaskDialog
+                    open
+                    onClose={() => setCreate(false)}
+                    onCreated={select}
+                    today={view === "today"}
+                    stage={createStage}
+                />
+            )}
+            {selectedTask && (
+                <Suspense fallback={<LinearProgress aria-label="Открываем карточку" />}>
+                    <TaskDrawer
+                        key={selectedTask.id}
+                        task={selectedTask}
+                        onClose={() => {
+                            select(null);
+                            if (params.has("task")) {
+                                const next = new URLSearchParams(params);
+                                next.delete("task");
+                                setParams(next, { replace: true });
+                            }
+                        }}
+                    />
+                </Suspense>
+            )}
             <Snackbar
                 key={notice.key}
                 open={!!notice.text}

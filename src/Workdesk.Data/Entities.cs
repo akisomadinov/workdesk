@@ -25,6 +25,7 @@ public sealed class WorkItem : BaseEntity<WorkItemId>
     public string Project { get; private set; } = "";
     public string Description { get; private set; } = "";
     public string Notes { get; private set; } = "";
+    public Guid[] DocumentIds { get; private set; } = [];
     public string NextStep { get; private set; } = "";
     public string Blocker { get; private set; } = "";
     public string Stage { get; private set; } = "inbox";
@@ -39,6 +40,7 @@ public sealed class WorkItem : BaseEntity<WorkItemId>
     public DateTime? SourceUpdated { get; private set; }
 
     private WorkItem() { }
+    public void SetDocuments(IEnumerable<Guid> ids) => DocumentIds = ids.Distinct().ToArray();
     public void SetOwner(Guid owner) => OwnerId = owner;
     public void SetCollaboration(Guid? workspace, Guid? assignee, string milestone) { WorkspaceId = workspace; AssigneeId = assignee; Milestone = milestone; }
     public void SetExternalMilestone(string milestone) => ExternalMilestone = milestone;

@@ -61,6 +61,65 @@ public sealed class CollaborationTests : IDisposable
         await Assert.ThrowsAsync<AppException>(() => service.Save(new SaveTaskRequest { Id = task.Id, Title = task.Title, Revision = task.Revision, WorkspaceId = null }, default));
     }
     [Fact]
+    public async Task TaskDocumentsPersistDeduplicateAndSurviveOlderClientUpdates()
+    {
+        var space = await Space(); var reader = await Join(space);
+        var note = await new NoteService(unit, Rights(owner)).Save(new SaveNoteRequest { Title = "Guide", WorkspaceId = space.Id }, default);
+        var service = new TaskService(unit, Rights(owner));
+        var task = await service.Save(new SaveTaskRequest { Title = "Release", WorkspaceId = space.Id, DocumentIds = [note.Id, note.Id] }, default);
+        Assert.Equal(note.Id, Assert.Single(task.DocumentIds));
+        db.ChangeTracker.Clear();
+        var saved = Assert.Single(await service.GetAll(default));
+        Assert.Equal(note.Id, Assert.Single(saved.DocumentIds));
+        var updated = await service.Save(new SaveTaskRequest { Id = task.Id, Title = task.Title, WorkspaceId = space.Id, Revision = task.Revision, NextStep = "Verify build" }, default);
+        Assert.Equal(note.Id, Assert.Single(updated.DocumentIds));
+        var readerView = Assert.Single(await new TaskService(unit, Rights(reader)).GetAll(default));
+        Assert.Equal(note.Id, Assert.Single(readerView.DocumentIds)); Assert.False(readerView.CanEdit);
+        await Assert.ThrowsAsync<AppException>(() => new TaskService(unit, Rights(reader)).Save(new SaveTaskRequest { Id = task.Id, Title = task.Title, WorkspaceId = space.Id, Revision = updated.Revision, DocumentIds = [] }, default));
+        await Team(owner).SetRole(space.Id, reader.Id, "removed", default);
+        Assert.Empty(await new TaskService(unit, Rights(reader)).GetAll(default));
+    }
+    [Fact]
+    public async Task TaskDocumentsRejectPrivateAndCrossWorkspaceLinks()
+    {
+        var space = await Space(); var otherSpace = await Team(owner).Create("Other", default);
+        var service = new TaskService(unit, Rights(owner));
+        var notes = new NoteService(unit, Rights(owner));
+        var personal = await notes.Save(new SaveNoteRequest { Title = "Private" }, default);
+        var other = await notes.Save(new SaveNoteRequest { Title = "Other", WorkspaceId = otherSpace.Id }, default);
+        foreach (var id in new[] { personal.Id, other.Id, Guid.NewGuid() })
+        {
+            var failure = await Assert.ThrowsAsync<AppException>(() => service.Save(new SaveTaskRequest { Title = "Team task", WorkspaceId = space.Id, DocumentIds = [id] }, default));
+            Assert.Equal(403, failure.Status);
+        }
+        Assert.Empty(await service.GetAll(default));
+    }
+    [Fact]
+    public async Task MovingDocumentsHidesLinksAndDoesNotBlockTaskEdits()
+    {
+        var space = await Space(); var reader = await Join(space);
+        var notes = new NoteService(unit, Rights(owner));
+        var note = await notes.Save(new SaveNoteRequest { Title = "Guide", WorkspaceId = space.Id }, default);
+        var service = new TaskService(unit, Rights(owner));
+        var task = await service.Save(new SaveTaskRequest { Title = "Release", WorkspaceId = space.Id, DocumentIds = [note.Id] }, default);
+        await notes.Save(new SaveNoteRequest { Id = note.Id, Title = note.Title, Revision = note.Revision, WorkspaceId = null }, default);
+        Assert.Empty(Assert.Single(await new TaskService(unit, Rights(reader)).GetAll(default)).DocumentIds);
+        var updated = await service.Save(new SaveTaskRequest { Id = task.Id, Title = task.Title, WorkspaceId = space.Id, Revision = task.Revision, DocumentIds = [note.Id], NextStep = "Continue" }, default);
+        Assert.Empty(updated.DocumentIds); Assert.Equal("Continue", updated.NextStep);
+    }
+    [Fact]
+    public async Task MovingTaskDropsOldDocumentLinksAndStaleRevisionCannotRestoreThem()
+    {
+        var space = await Space();
+        var note = await new NoteService(unit, Rights(owner)).Save(new SaveNoteRequest { Title = "Personal" }, default);
+        var service = new TaskService(unit, Rights(owner));
+        var task = await service.Save(new SaveTaskRequest { Title = "Task", DocumentIds = [note.Id] }, default);
+        var moved = await service.Save(new SaveTaskRequest { Id = task.Id, Title = task.Title, Revision = task.Revision, WorkspaceId = space.Id, DocumentIds = [note.Id] }, default);
+        Assert.Empty(moved.DocumentIds);
+        var failure = await Assert.ThrowsAsync<AppException>(() => service.Save(new SaveTaskRequest { Id = task.Id, Title = task.Title, Revision = task.Revision, DocumentIds = [note.Id] }, default));
+        Assert.Equal(409, failure.Status);
+    }
+    [Fact]
     public async Task InvitationsAreSingleUseAndLoginWorks()
     {
         var space = await Space(); var invitation = await Team(owner).Invite(space.Id, "editor", default);

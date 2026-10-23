@@ -38,6 +38,9 @@ export default function MarkdownView({
                 "& table": { borderCollapse: "collapse", display: "block", overflowX: "auto" },
                 "& th, & td": { border: 1, borderColor: "divider", px: 1.5, py: 0.75 },
                 "& li": { mb: 0.5 },
+                "& .task-list-item": { listStyle: "none" },
+                "& .contains-task-list": { pl: 0 },
+                "& .task-list-item input": { mr: 1, accentColor: "primary.main" },
                 "& hr": { border: 0, borderTop: 1, borderColor: "divider", my: 3 }
             }}
         >

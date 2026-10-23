@@ -24,7 +24,17 @@ const schema = z.object({
     template: z.enum(["blank", "meeting", "investigation", "daily"]),
     workspaceId: z.string()
 });
-export default function NewDocumentDialog({ onClose, parent }: { onClose: () => void; parent?: NoteLink }) {
+export default function NewDocumentDialog({
+    onClose,
+    parent,
+    task,
+    onCreated
+}: {
+    onClose: () => void;
+    parent?: NoteLink;
+    task?: { id: string; title: string; workspaceId?: string | null; project: string };
+    onCreated?: (id: string) => Promise<void>;
+}) {
     const { scope } = useWorkspaceStore();
     const { data: spaces = [] } = useTeamGetQuery();
     const [save] = useNotesSaveMutation();
@@ -34,9 +44,15 @@ export default function NewDocumentDialog({ onClose, parent }: { onClose: () => 
         resolver: zodResolver(schema),
         mode: "onChange",
         defaultValues: {
-            title: "",
+            title: task ? task.title.slice(0, 200) : "",
             template: "blank",
-            workspaceId: parent ? (parent.workspaceId ?? "") : ["mine", "all"].includes(scope) ? "" : scope
+            workspaceId: task
+                ? (task.workspaceId ?? "")
+                : parent
+                  ? (parent.workspaceId ?? "")
+                  : ["mine", "all"].includes(scope)
+                    ? ""
+                    : scope
         }
     });
     const values = useWatch({ control: form.control });
@@ -48,13 +64,17 @@ export default function NewDocumentDialog({ onClose, parent }: { onClose: () => 
                         const result = await save({
                             saveNoteRequest: {
                                 title: value.title,
-                                body: noteTemplates[value.template].body,
+                                body:
+                                    (task ? `[К задаче](/board?task=${task.id})\n\n` : "") +
+                                    noteTemplates[value.template].body,
+                                project: task?.project ?? "",
                                 workspaceId: value.workspaceId || null,
                                 parentId: parent?.id
                             }
                         }).unwrap();
+                        if (onCreated && result.id) await onCreated(result.id);
                         onClose();
-                        navigate(`/notes/${result.id}`);
+                        if (!onCreated) navigate(`/notes/${result.id}`);
                     } catch (failure) {
                         setError(message(failure));
                     }
@@ -84,13 +104,15 @@ export default function NewDocumentDialog({ onClose, parent }: { onClose: () => 
                             label="Кому доступен"
                             value={values.workspaceId}
                             {...form.register("workspaceId")}
-                            disabled={!!parent}
+                            disabled={!!parent || !!task}
                             helperText={
-                                parent
-                                    ? `Внутри «${parent.title}» · доступ как у родительского документа`
-                                    : values.workspaceId
-                                      ? "Документ увидят участники этой команды."
-                                      : "Личный документ виден только тебе."
+                                task
+                                    ? "Документ будет доступен тем же людям, что и задача."
+                                    : parent
+                                      ? `Внутри «${parent.title}» · доступ как у родительского документа`
+                                      : values.workspaceId
+                                        ? "Документ увидят участники этой команды."
+                                        : "Личный документ виден только тебе."
                             }
                         >
                             <MenuItem value="">Только мне</MenuItem>

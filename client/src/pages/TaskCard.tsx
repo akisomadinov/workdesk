@@ -1,148 +1,154 @@
-import { memo } from "react";
-import { Box, Button, Card, Chip, IconButton, Stack, Tooltip, Typography } from "@mui/material";
-import CheckRounded from "@mui/icons-material/CheckRounded";
+import { memo, useState } from "react";
+import { Box, Card, CardActionArea, Divider, IconButton, Menu, MenuItem, Stack, Typography } from "@mui/material";
+import MoreHorizRounded from "@mui/icons-material/MoreHorizRounded";
 import ArrowForwardRounded from "@mui/icons-material/ArrowForwardRounded";
-import WbSunnyOutlined from "@mui/icons-material/WbSunnyOutlined";
-import NotesRounded from "@mui/icons-material/NotesRounded";
+import ScheduleRounded from "@mui/icons-material/ScheduleRounded";
 import type { TaskItem } from "@/common/models";
-import { localDate, priorities } from "@/common/models";
+import { localDate, stages } from "@/common/models";
 interface Props {
     task: TaskItem;
     source: string;
     onOpen: () => void;
     onToday: () => void;
-    onDone: () => void;
-    onDrag: (id: string) => void;
+    onStage: (stage: string) => void;
+    onDrag: (id: string | null) => void;
 }
-function TaskCard({ task, source, onOpen, onToday, onDone, onDrag }: Props) {
+function TaskCard({ task, source, onOpen, onToday, onStage, onDrag }: Props) {
+    const [menu, setMenu] = useState<HTMLElement | null>(null);
     const urgent = task.priority === "urgent" || task.priority === "high";
+    const waiting = task.stage === "waiting";
+    const today = localDate();
+    const overdue = !!task.plannedFor && task.plannedFor < today && task.stage !== "done";
+    const dateLabel =
+        task.plannedFor === today
+            ? "Сегодня"
+            : task.plannedFor
+              ? new Date(`${task.plannedFor}T12:00:00`).toLocaleDateString("ru-RU", { day: "numeric", month: "short" })
+              : "";
+    const next = waiting && task.blocker ? task.blocker : task.nextStep;
     return (
-        <Card
-            variant="outlined"
-            draggable={task.canEdit !== false}
-            onDragStart={(event) => {
-                event.dataTransfer.setData("text/workdesk-task", task.id);
-                onDrag(task.id);
-            }}
-            sx={{
-                p: 2,
-                borderColor: "divider",
-                borderRadius: 2.5,
-                transition: "border-color 120ms",
-                "&:hover": { borderColor: "primary.main" }
-            }}
-        >
-            <Stack gap={1.5}>
-                <Stack direction="row" justifyContent="space-between" alignItems="center" gap={1}>
-                    <Typography variant="caption" color="text.secondary" noWrap sx={{ maxWidth: "80%" }}>
-                        {task.project || source}
-                    </Typography>
-                    {urgent && (
-                        <Box
-                            sx={{
-                                width: 7,
-                                height: 7,
-                                borderRadius: "50%",
-                                bgcolor: task.priority === "urgent" ? "error.main" : "warning.main",
-                                flexShrink: 0
-                            }}
-                        />
-                    )}
-                </Stack>
-                <Button
+        <>
+            <Card
+                variant="outlined"
+                draggable={task.canEdit !== false}
+                onDragStart={(event) => {
+                    event.dataTransfer.setData("text/workdesk-task", task.id);
+                    event.dataTransfer.effectAllowed = "move";
+                    onDrag(task.id);
+                }}
+                onDragEnd={() => onDrag(null)}
+                sx={{
+                    position: "relative",
+                    borderRadius: 1.5,
+                    transition: "border-color 120ms",
+                    "&:hover": { borderColor: "text.disabled" }
+                }}
+            >
+                <CardActionArea
                     onClick={onOpen}
-                    color="inherit"
-                    sx={{
-                        justifyContent: "flex-start",
-                        textAlign: "left",
-                        p: 0,
-                        fontSize: 14,
-                        fontWeight: 600,
-                        lineHeight: 1.6,
-                        overflowWrap: "anywhere",
-                        "&:hover": { bgcolor: "transparent", color: "primary.main" }
-                    }}
+                    aria-label={`Открыть задачу: ${task.title}`}
+                    sx={{ p: 2, display: "block", textAlign: "left" }}
                 >
-                    {task.title}
-                </Button>
-                {task.nextStep && (
-                    <Stack direction="row" gap={0.75} alignItems="flex-start">
-                        <ArrowForwardRounded sx={{ fontSize: 15, mt: 0.3, color: "primary.main" }} />
+                    <Stack gap={1.25}>
+                        <Typography variant="caption" color="text.secondary" noWrap sx={{ pr: 3 }}>
+                            {task.project || (task.workspaceId ? "Командная задача" : "Личная задача")}
+                            {task.connectionId && ` · ${source}`}
+                        </Typography>
                         <Typography
                             variant="body2"
-                            color="text.secondary"
-                            sx={{
-                                display: "-webkit-box",
-                                WebkitLineClamp: 2,
-                                WebkitBoxOrient: "vertical",
-                                overflow: "hidden",
-                                overflowWrap: "anywhere"
+                            fontWeight={650}
+                            sx={{ lineHeight: 1.55, overflowWrap: "anywhere" }}
+                        >
+                            {task.title}
+                        </Typography>
+                        {task.stage !== "done" && (
+                            <Box sx={{ borderLeft: 2, borderColor: waiting ? "warning.main" : "divider", pl: 1.25 }}>
+                                <Typography variant="caption" color={waiting ? "warning.main" : "text.secondary"}>
+                                    {waiting && task.blocker ? "Ожидаем" : "Дальше"}
+                                </Typography>
+                                <Typography
+                                    variant="body2"
+                                    color={next ? "text.primary" : "text.secondary"}
+                                    sx={{
+                                        mt: 0.25,
+                                        display: "-webkit-box",
+                                        WebkitLineClamp: 2,
+                                        WebkitBoxOrient: "vertical",
+                                        overflow: "hidden",
+                                        overflowWrap: "anywhere"
+                                    }}
+                                >
+                                    {next || "Укажи следующий шаг"}
+                                </Typography>
+                            </Box>
+                        )}
+                        {(dateLabel || urgent) && (
+                            <Stack direction="row" gap={1.5} alignItems="center" flexWrap="wrap">
+                                {dateLabel && (
+                                    <Stack
+                                        direction="row"
+                                        gap={0.5}
+                                        alignItems="center"
+                                        sx={{ color: overdue ? "warning.main" : "text.secondary" }}
+                                    >
+                                        <ScheduleRounded sx={{ fontSize: 14 }} />
+                                        <Typography variant="caption">
+                                            {overdue ? `Перенести с ${dateLabel}` : dateLabel}
+                                        </Typography>
+                                    </Stack>
+                                )}
+                                {urgent && (
+                                    <Typography
+                                        variant="caption"
+                                        color={task.priority === "urgent" ? "error.main" : "warning.main"}
+                                    >
+                                        {task.priority === "urgent" ? "Срочно" : "Высокий приоритет"}
+                                    </Typography>
+                                )}
+                            </Stack>
+                        )}
+                    </Stack>
+                </CardActionArea>
+                {task.canEdit !== false && (
+                    <IconButton
+                        size="small"
+                        aria-label={`Действия: ${task.title}`}
+                        onClick={(event) => setMenu(event.currentTarget)}
+                        sx={{ position: "absolute", top: 8, right: 6, color: "text.secondary" }}
+                    >
+                        <MoreHorizRounded fontSize="small" />
+                    </IconButton>
+                )}
+            </Card>
+            <Menu anchorEl={menu} open={!!menu} onClose={() => setMenu(null)}>
+                <MenuItem
+                    onClick={() => {
+                        setMenu(null);
+                        onToday();
+                    }}
+                >
+                    {task.plannedFor === today ? "Убрать из плана на сегодня" : "На сегодня"}
+                </MenuItem>
+                <Divider />
+                <Typography variant="caption" color="text.secondary" sx={{ px: 2, py: 0.5, display: "block" }}>
+                    Переместить
+                </Typography>
+                {stages
+                    .filter((stage) => stage.id !== task.stage)
+                    .map((stage) => (
+                        <MenuItem
+                            key={stage.id}
+                            onClick={() => {
+                                setMenu(null);
+                                onStage(stage.id);
                             }}
                         >
-                            {task.nextStep}
-                        </Typography>
-                    </Stack>
-                )}
-                {task.stage === "waiting" && task.blocker && (
-                    <Typography variant="caption" color="warning.main" sx={{ overflowWrap: "anywhere" }}>
-                        Ожидаю: {task.blocker}
-                    </Typography>
-                )}
-                <Stack direction="row" justifyContent="space-between" alignItems="center" gap={1}>
-                    <Chip
-                        label={priorities.find((x) => x.id === task.priority)?.label}
-                        size="small"
-                        sx={{
-                            bgcolor: urgent ? "warning.light" : "background.default",
-                            color: urgent ? "warning.main" : "text.secondary",
-                            fontSize: 11
-                        }}
-                    />
-                    <Stack direction="row" gap={0.25} alignItems="center">
-                        {task.notes && (
-                            <Tooltip title="Есть заметки">
-                                <NotesRounded sx={{ color: "text.disabled", fontSize: 16, mr: 0.5 }} />
-                            </Tooltip>
-                        )}
-                        <Tooltip
-                            title={
-                                task.plannedFor === localDate()
-                                    ? "Убрать из плана на сегодня"
-                                    : "Запланировать на сегодня"
-                            }
-                        >
-                            <IconButton
-                                size="small"
-                                aria-label={task.plannedFor === localDate() ? "Убрать с сегодня" : "На сегодня"}
-                                onClick={onToday}
-                                disabled={task.canEdit === false}
-                                sx={{ color: task.plannedFor === localDate() ? "primary.main" : "text.disabled" }}
-                            >
-                                <WbSunnyOutlined fontSize="small" />
-                            </IconButton>
-                        </Tooltip>
-                        {task.stage !== "done" && (
-                            <Tooltip title="Отметить выполненной">
-                                <IconButton
-                                    size="small"
-                                    aria-label="Завершить задачу"
-                                    onClick={onDone}
-                                    disabled={task.canEdit === false}
-                                    sx={{ color: "text.disabled", "&:hover": { color: "success.main" } }}
-                                >
-                                    <CheckRounded fontSize="small" />
-                                </IconButton>
-                            </Tooltip>
-                        )}
-                    </Stack>
-                </Stack>
-                {task.connectionId && (
-                    <Typography variant="caption" color="text.disabled" noWrap>
-                        {source} · {task.externalState === "closed" ? "Закрыта в трекере" : "Из трекера"}
-                    </Typography>
-                )}
-            </Stack>
-        </Card>
+                            <ArrowForwardRounded sx={{ fontSize: 16, mr: 1, color: "text.secondary" }} />
+                            {stage.label}
+                        </MenuItem>
+                    ))}
+            </Menu>
+        </>
     );
 }
 export default memo(TaskCard);
