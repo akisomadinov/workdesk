@@ -143,6 +143,36 @@ const injectedRtkApi = api
                 query: () => ({ url: `/api/Notes/export` }),
                 providesTags: ["Notes"],
             }),
+            notesTrash: build.query<NotesTrashResponse, NotesTrashRequest>({
+                query: () => ({ url: `/api/Notes/trash` }),
+                providesTags: ["Notes"],
+            }),
+            notesDelete: build.mutation<
+                NotesDeleteResponse,
+                NotesDeleteRequest
+            >({
+                query: (queryArg) => ({
+                    url: `/api/Notes/${queryArg.id}`,
+                    method: "DELETE",
+                    params: {
+                        revision: queryArg.revision,
+                    },
+                }),
+                invalidatesTags: ["Notes"],
+            }),
+            notesRestore: build.mutation<
+                NotesRestoreResponse,
+                NotesRestoreRequest
+            >({
+                query: (queryArg) => ({
+                    url: `/api/Notes/${queryArg.id}/restore`,
+                    method: "POST",
+                    params: {
+                        revision: queryArg.revision,
+                    },
+                }),
+                invalidatesTags: ["Notes"],
+            }),
             notificationsGet: build.query<
                 NotificationsGetResponse,
                 NotificationsGetRequest
@@ -187,6 +217,36 @@ const injectedRtkApi = api
                     url: `/api/Tasks/save`,
                     method: "POST",
                     body: queryArg.saveTaskRequest,
+                }),
+                invalidatesTags: ["Tasks"],
+            }),
+            tasksTrash: build.query<TasksTrashResponse, TasksTrashRequest>({
+                query: () => ({ url: `/api/Tasks/trash` }),
+                providesTags: ["Tasks"],
+            }),
+            tasksDelete: build.mutation<
+                TasksDeleteResponse,
+                TasksDeleteRequest
+            >({
+                query: (queryArg) => ({
+                    url: `/api/Tasks/${queryArg.id}`,
+                    method: "DELETE",
+                    params: {
+                        revision: queryArg.revision,
+                    },
+                }),
+                invalidatesTags: ["Tasks"],
+            }),
+            tasksRestore: build.mutation<
+                TasksRestoreResponse,
+                TasksRestoreRequest
+            >({
+                query: (queryArg) => ({
+                    url: `/api/Tasks/${queryArg.id}/restore`,
+                    method: "POST",
+                    params: {
+                        revision: queryArg.revision,
+                    },
                 }),
                 invalidatesTags: ["Tasks"],
             }),
@@ -310,6 +370,18 @@ export type NotesImportRequest = {
 };
 export type NotesExportResponse = unknown;
 export type NotesExportRequest = void;
+export type NotesTrashResponse = /** status 200 OK */ NoteResponseRead[];
+export type NotesTrashRequest = void;
+export type NotesDeleteResponse = /** status 200 OK */ NoteResponseRead;
+export type NotesDeleteRequest = {
+    id: string;
+    revision?: number;
+};
+export type NotesRestoreResponse = /** status 200 OK */ NoteResponseRead;
+export type NotesRestoreRequest = {
+    id: string;
+    revision?: number;
+};
 export type NotificationsGetResponse =
     /** status 200 OK */ NotificationResponse[];
 export type NotificationsGetRequest = void;
@@ -330,6 +402,18 @@ export type TasksGetRequest = void;
 export type TasksSaveResponse = /** status 200 OK */ WorkItemResponseRead;
 export type TasksSaveRequest = {
     saveTaskRequest: SaveTaskRequest;
+};
+export type TasksTrashResponse = /** status 200 OK */ WorkItemResponseRead[];
+export type TasksTrashRequest = void;
+export type TasksDeleteResponse = /** status 200 OK */ WorkItemResponseRead;
+export type TasksDeleteRequest = {
+    id: string;
+    revision?: number;
+};
+export type TasksRestoreResponse = /** status 200 OK */ WorkItemResponseRead;
+export type TasksRestoreRequest = {
+    id: string;
+    revision?: number;
 };
 export type TeamGetResponse = /** status 200 OK */ WorkspaceResponse[];
 export type TeamGetRequest = void;
@@ -433,6 +517,7 @@ export type NoteResponseRead = {
     tags?: string | null;
     pinned?: boolean;
     archived?: boolean;
+    deletedAt?: string | null;
     revision?: number;
     created?: string;
     modified?: string | null;
@@ -508,6 +593,7 @@ export type WorkItemResponseRead = {
     priority?: string | null;
     plannedFor?: string | null;
     archived?: boolean;
+    deletedAt?: string | null;
     revision?: number;
     connectionId?: string | null;
     externalKey?: string | null;
@@ -589,12 +675,18 @@ export const {
     useNotesHistoryQuery,
     useNotesImportMutation,
     useNotesExportQuery,
+    useNotesTrashQuery,
+    useNotesDeleteMutation,
+    useNotesRestoreMutation,
     useNotificationsGetQuery,
     useNotificationsReadMutation,
     useNotificationsTelegramQuery,
     useNotificationsConfigureMutation,
     useTasksGetQuery,
     useTasksSaveMutation,
+    useTasksTrashQuery,
+    useTasksDeleteMutation,
+    useTasksRestoreMutation,
     useTeamGetQuery,
     useTeamCreateMutation,
     useTeamInviteMutation,

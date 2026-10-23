@@ -61,8 +61,11 @@ public sealed class Note : BaseEntity<NoteId>
     public string Project { get; private set; } = "";
     public string Tags { get; private set; } = "";
     public bool Pinned { get; private set; }
+    public DateTime? DeletedAt { get; private set; }
     public bool Archived { get; private set; }
     public int Revision { get; private set; }
+    public void SetDeleted(bool deleted) { DeletedAt = deleted ? DateTime.UtcNow : null; Revision++; Modified = DateTime.UtcNow; }
+    public void DetachParent() { ParentId = null; Revision++; Modified = DateTime.UtcNow; }
     private Note() { }
     public Note(Guid owner) { Id = NoteId.New(); OwnerId = owner; }
     public void Update(string title, string body, string project, string tags, bool pinned, bool archived, Guid? workspace, Guid? parentId = null)

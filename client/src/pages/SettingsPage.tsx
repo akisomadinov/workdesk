@@ -65,6 +65,9 @@ export default function SettingsPage() {
                 <Button component="a" href="/api/backup" download="workdesk-backup.json" variant="outlined">
                     Экспорт данных
                 </Button>
+                <Button component={Link} to="/trash" color="inherit" sx={{ ml: 1 }}>
+                    Корзина
+                </Button>
             </Box>
         </Stack>
     );

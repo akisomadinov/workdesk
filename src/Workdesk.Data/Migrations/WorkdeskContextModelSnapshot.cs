@@ -204,6 +204,9 @@ namespace Workdesk.Data.Migrations
                     b.Property<DateTime>("Created")
                         .HasColumnType("TEXT");
 
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTime?>("Modified")
                         .HasColumnType("TEXT");
 
@@ -364,6 +367,9 @@ namespace Workdesk.Data.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<DateTime>("Created")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("DeletedAt")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Description")

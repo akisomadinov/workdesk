@@ -193,6 +193,74 @@ public sealed class CollaborationTests : IDisposable
         var entry = Assert.Single(await queue.Read()); Assert.Equal(id, entry.NotificationId);
         await queue.Ack(entry); Assert.Empty(await queue.Read());
     }
+    [Fact]
+    public async Task TaskTrashPreservesContentChecksAccessAndRejectsStaleWrites()
+    {
+        var space = await Space(); var reader = await Join(space);
+        var service = new TaskService(unit, Rights(owner));
+        var note = await new NoteService(unit, Rights(owner)).Save(new SaveNoteRequest { Title = "Guide", WorkspaceId = space.Id }, default);
+        var task = await service.Save(new SaveTaskRequest { Title = "Task", WorkspaceId = space.Id, Notes = "Work log", Description = "Goal", DocumentIds = [note.Id] }, default);
+        var readerService = new TaskService(unit, Rights(reader));
+        Assert.Equal(403, (await Assert.ThrowsAsync<AppException>(() => readerService.SetDeleted(task.Id, task.Revision, true, default))).Status);
+        Assert.Equal(409, (await Assert.ThrowsAsync<AppException>(() => service.SetDeleted(task.Id, task.Revision - 1, true, default))).Status);
+        var deleted = await service.SetDeleted(task.Id, task.Revision, true, default);
+        Assert.NotNull(deleted.DeletedAt); Assert.Empty(await service.GetAll(default));
+        Assert.False(Assert.Single(await readerService.GetDeleted(default)).CanEdit);
+        Assert.Equal(403, (await Assert.ThrowsAsync<AppException>(() => readerService.SetDeleted(task.Id, deleted.Revision, false, default))).Status);
+        Assert.Equal(409, (await Assert.ThrowsAsync<AppException>(() => service.Save(new SaveTaskRequest { Id = task.Id, Title = "Overwrite", WorkspaceId = space.Id, Revision = deleted.Revision }, default))).Status);
+        await Team(owner).SetRole(space.Id, reader.Id, "removed", default);
+        Assert.Empty(await readerService.GetDeleted(default));
+        var restored = await service.SetDeleted(task.Id, deleted.Revision, false, default);
+        Assert.Null(restored.DeletedAt); Assert.Equal("Work log", restored.Notes); Assert.Equal("Goal", restored.Description);
+        Assert.Equal(note.Id, Assert.Single(restored.DocumentIds)); Assert.Empty(await service.GetDeleted(default));
+        Assert.Equal(restored.Id, Assert.Single(await service.GetAll(default)).Id);
+    }
+    [Fact]
+    public async Task DocumentTrashKeepsChildrenAndHistoryAndHidesTaskLinks()
+    {
+        var notes = new NoteService(unit, Rights(owner));
+        var parent = await notes.Save(new SaveNoteRequest { Title = "Parent", Body = "first" }, default);
+        var child = await notes.Save(new SaveNoteRequest { Title = "Child", ParentId = parent.Id }, default);
+        parent = await notes.Save(new SaveNoteRequest { Id = parent.Id, Title = parent.Title, Body = "second", Revision = parent.Revision }, default);
+        var tasks = new TaskService(unit, Rights(owner));
+        var task = await tasks.Save(new SaveTaskRequest { Title = "Task", DocumentIds = [parent.Id] }, default);
+        var deleted = await notes.SetDeleted(parent.Id, parent.Revision, true, default);
+        var remaining = Assert.Single(await notes.GetAll(default)); Assert.Equal(child.Id, remaining.Id); Assert.Null(remaining.ParentId);
+        Assert.Empty(Assert.Single(await tasks.GetAll(default)).DocumentIds);
+        Assert.Equal("first", Assert.Single(await notes.History(parent.Id, default)).Body);
+        Assert.Equal(409, (await Assert.ThrowsAsync<AppException>(() => notes.Save(new SaveNoteRequest { Id = parent.Id, Title = parent.Title, Revision = deleted.Revision }, default))).Status);
+        using var stream = new MemoryStream(await notes.Export(default));
+        using var zip = new System.IO.Compression.ZipArchive(stream); Assert.StartsWith("Child-", Assert.Single(zip.Entries).Name);
+        var hiddenTask = await tasks.SetDeleted(task.Id, task.Revision, true, default); Assert.Empty(hiddenTask.DocumentIds);
+        var restored = await notes.SetDeleted(parent.Id, deleted.Revision, false, default);
+        Assert.Equal("second", restored.Body); Assert.Null(restored.ParentId);
+        Assert.Equal(parent.Id, Assert.Single((await tasks.SetDeleted(task.Id, hiddenTask.Revision, false, default)).DocumentIds));
+    }
+    [Fact]
+    public async Task TrashAndRestoreRespectPersonalOwnershipAndDocumentRoles()
+    {
+        var space = await Space(); var reader = await Join(space);
+        var notes = new NoteService(unit, Rights(owner)); var readerNotes = new NoteService(unit, Rights(reader));
+        var shared = await notes.Save(new SaveNoteRequest { Title = "Shared", WorkspaceId = space.Id }, default);
+        Assert.Equal(403, (await Assert.ThrowsAsync<AppException>(() => readerNotes.SetDeleted(shared.Id, shared.Revision, true, default))).Status);
+        var personal = await notes.Save(new SaveNoteRequest { Title = "Private" }, default);
+        var deleted = await notes.SetDeleted(personal.Id, personal.Revision, true, default);
+        Assert.Empty(await readerNotes.GetDeleted(default));
+        Assert.Equal(403, (await Assert.ThrowsAsync<AppException>(() => readerNotes.SetDeleted(personal.Id, deleted.Revision, false, default))).Status);
+        var tasks = new TaskService(unit, Rights(owner)); var task = await tasks.Save(new SaveTaskRequest { Title = "Private task" }, default);
+        var deletedTask = await tasks.SetDeleted(task.Id, task.Revision, true, default);
+        var readerTasks = new TaskService(unit, Rights(reader)); Assert.Empty(await readerTasks.GetDeleted(default));
+        Assert.Equal(403, (await Assert.ThrowsAsync<AppException>(() => readerTasks.SetDeleted(task.Id, deletedTask.Revision, false, default))).Status);
+    }
+    [Fact]
+    public async Task SyncDoesNotResurrectDeletedImportedTasks()
+    {
+        var task = new WorkItem("Imported", "Project", "Description");
+        task.Import(ConnectionId.New(), "issue:1", "Imported", "Project", "Description", "https://example.test", "opened", DateTime.UtcNow);
+        task.SetDeleted(true); var revision = task.Revision;
+        task.Import(task.ConnectionId!.Value, "issue:1", "Updated upstream", "Project", "New description", "https://example.test", "closed", DateTime.UtcNow);
+        Assert.NotNull(task.DeletedAt); Assert.Equal(revision, task.Revision);
+    }
     public void Dispose() { db.Dispose(); connection.Dispose(); }
     private sealed class Actor(Guid id) : ICurrentActor { public Guid Id => id; public bool IsSystem => false; }
     private sealed class Secrets : ISecretStore

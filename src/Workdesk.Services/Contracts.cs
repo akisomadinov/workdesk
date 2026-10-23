@@ -22,6 +22,7 @@ public sealed class WorkItemResponse(WorkItem task, bool canEdit = true, Guid[]?
     public string Priority { get; } = task.Priority;
     public string? PlannedFor { get; } = task.PlannedFor;
     public bool Archived { get; } = task.Archived;
+    public DateTime? DeletedAt { get; } = task.DeletedAt;
     public int Revision { get; } = task.Revision;
     public Guid? ConnectionId { get; } = task.ConnectionId?.Value;
     public string? ExternalKey { get; } = task.ExternalKey;

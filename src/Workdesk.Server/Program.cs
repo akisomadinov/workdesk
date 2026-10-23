@@ -91,9 +91,9 @@ app.UseSwagger();
 app.UseDefaultFiles();
 app.UseStaticFiles();
 app.MapControllers();
-app.MapGet("/api/health", () => new { status = "ok", version = "0.4.0" });
+app.MapGet("/api/health", () => new { status = "ok", version = "0.5.0" });
 app.MapGet("/api/backup", async (ITaskService tasks, IConnectionService connections, INoteService notes, CancellationToken ct) =>
-    Results.Json(new { Version = 2, ExportedAt = DateTime.UtcNow, Tasks = await tasks.GetAll(ct), Connections = await connections.GetAll(ct), Notes = await notes.GetAll(ct) }));
+    Results.Json(new { Version = 3, ExportedAt = DateTime.UtcNow, Tasks = await tasks.GetAll(ct), Connections = await connections.GetAll(ct), Notes = await notes.GetAll(ct), DeletedTasks = await tasks.GetDeleted(ct), DeletedNotes = await notes.GetDeleted(ct) }));
 app.MapFallbackToFile("index.html");
 using (var scope = app.Services.CreateScope())
 {

@@ -1,4 +1,6 @@
 import { lazy } from "react";
+const TodayPage = lazy(() => import("@/pages/TodayPage"));
+const TrashPage = lazy(() => import("@/pages/TrashPage"));
 const WorkspacePage = lazy(() => import("@/pages/WorkspacePage"));
 const ConnectionsPage = lazy(() => import("@/pages/ConnectionsPage"));
 export const NotesPage = lazy(() => import("@/pages/NotesPage"));
@@ -8,9 +10,10 @@ const NotificationsPage = lazy(() => import("@/pages/NotificationsPage"));
 const SettingsPage = lazy(() => import("@/pages/SettingsPage"));
 export default function useGetPages() {
     return [
-        { path: "/", label: "Сегодня", component: <WorkspacePage view="today" /> },
+        { path: "/", label: "Сегодня", component: <TodayPage /> },
         { path: "/board", label: "Задачи", component: <WorkspacePage view="board" /> },
         { path: "/inbox", label: "Входящие", component: <WorkspacePage view="inbox" /> },
+        { path: "/trash", label: "Корзина", component: <TrashPage /> },
         { path: "/archive", label: "Архив", component: <WorkspacePage view="archive" /> },
         { path: "/notes", label: "Документы", component: <NotesPage /> },
         { path: "/reports", label: "Итоги", component: <ReportsPage /> },

@@ -7,23 +7,23 @@ namespace Workdesk.Services;
 public interface ITaskService
 {
     Task<List<WorkItemResponse>> GetAll(CancellationToken ct);
+    Task<List<WorkItemResponse>> GetDeleted(CancellationToken ct);
+    Task<WorkItemResponse> SetDeleted(Guid id, int revision, bool deleted, CancellationToken ct);
     Task<WorkItemResponse> Save(SaveTaskRequest request, CancellationToken ct);
 }
 public sealed class TaskService(IUnitOfWork unit, IAccessPolicy? access = null) : ITaskService
 {
     private readonly IAccessPolicy rights = access ?? new AccessPolicy(unit, new LocalActor());
-    public async Task<List<WorkItemResponse>> GetAll(CancellationToken ct)
+    public Task<List<WorkItemResponse>> GetAll(CancellationToken ct) => List(false, ct);
+    public Task<List<WorkItemResponse>> GetDeleted(CancellationToken ct) => List(true, ct);
+    private async Task<List<WorkItemResponse>> List(bool deleted, CancellationToken ct)
     {
         var result = new List<WorkItemResponse>();
         var documents = (await unit.Notes.GetAll(ct)).ToDictionary(note => note.Id.Value);
         foreach (var item in await unit.Tasks.GetAll(ct))
         {
-            if (!await rights.CanRead(item.OwnerId, item.WorkspaceId, ct)) continue;
-            var ids = new List<Guid>();
-            foreach (var id in item.DocumentIds)
-                if (documents.TryGetValue(id, out var note) && SameAudience(note, item.OwnerId, item.WorkspaceId)
-                    && await rights.CanRead(note.OwnerId, note.WorkspaceId, ct)) ids.Add(id);
-            result.Add(new WorkItemResponse(item, await rights.CanEdit(item.OwnerId, item.WorkspaceId, ct), ids.ToArray()));
+            if ((item.DeletedAt is not null) != deleted || !await rights.CanRead(item.OwnerId, item.WorkspaceId, ct)) continue;
+            result.Add(await Response(item, documents, ct));
         }
         return result.OrderByDescending(x => x.Created).ToList();
     }
@@ -45,6 +45,7 @@ public sealed class TaskService(IUnitOfWork unit, IAccessPolicy? access = null) 
             : new WorkItem(request.Title.Trim(), request.Project.Trim(), request.Description);
         if (request.Id is null) item.SetOwner(rights.UserId);
         await rights.RequireWrite(item.OwnerId, item.WorkspaceId, ct);
+        if (item.DeletedAt is not null) throw new AppException("Задача в корзине. Сначала восстанови её.", 409);
         if (item.WorkspaceId != request.WorkspaceId && item.OwnerId != rights.UserId) throw new AppException("Только автор может перенести задачу в другое пространство.", 403);
         await rights.RequireWorkspace(request.WorkspaceId, request.AssigneeId, ct);
         if (request.Milestone.Length > 200) throw new AppException("Название milestone должно быть короче 200 символов.");
@@ -56,7 +57,7 @@ public sealed class TaskService(IUnitOfWork unit, IAccessPolicy? access = null) 
         {
             var note = await unit.Notes.Get(new NoteId(documentId), ct);
             var existing = item.DocumentIds.Contains(documentId);
-            if (note is null || !SameAudience(note, item.OwnerId, request.WorkspaceId)
+            if (note is null || note.DeletedAt is not null || !SameAudience(note, item.OwnerId, request.WorkspaceId)
                 || !await rights.CanRead(note.OwnerId, note.WorkspaceId, ct) || (note.Archived && !existing))
             {
                 // Removed access or a moved document must not block unrelated task edits.
@@ -73,6 +74,24 @@ public sealed class TaskService(IUnitOfWork unit, IAccessPolicy? access = null) 
         try { await unit.Commit(ct); }
         catch (DbUpdateConcurrencyException) { throw new AppException("Задача уже изменена. Обнови карточку перед сохранением.", 409); }
         return new WorkItemResponse(item);
+    }
+    public async Task<WorkItemResponse> SetDeleted(Guid id, int revision, bool deleted, CancellationToken ct)
+    {
+        var item = await unit.Tasks.Get(new WorkItemId(id), ct) ?? throw new AppException("Задача не найдена.", 404);
+        await rights.RequireWrite(item.OwnerId, item.WorkspaceId, ct);
+        if (item.Revision != revision) throw new AppException("Задача уже изменена. Обнови страницу перед повторной попыткой.", 409);
+        if ((item.DeletedAt is not null) != deleted) item.SetDeleted(deleted);
+        try { await unit.Commit(ct); }
+        catch (DbUpdateConcurrencyException) { throw new AppException("Задача уже изменена. Обнови страницу.", 409); }
+        return await Response(item, (await unit.Notes.GetAll(ct)).ToDictionary(note => note.Id.Value), ct);
+    }
+    private async Task<WorkItemResponse> Response(WorkItem item, Dictionary<Guid, Note> documents, CancellationToken ct)
+    {
+        var ids = new List<Guid>();
+        foreach (var id in item.DocumentIds)
+            if (documents.TryGetValue(id, out var note) && note.DeletedAt is null && SameAudience(note, item.OwnerId, item.WorkspaceId)
+                && await rights.CanRead(note.OwnerId, note.WorkspaceId, ct)) ids.Add(id);
+        return new WorkItemResponse(item, await rights.CanEdit(item.OwnerId, item.WorkspaceId, ct), ids.ToArray());
     }
     private static bool SameAudience(Note note, Guid owner, Guid? workspace) =>
         note.WorkspaceId == workspace && (workspace is not null || note.OwnerId == owner);

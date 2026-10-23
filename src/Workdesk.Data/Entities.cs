@@ -31,6 +31,7 @@ public sealed class WorkItem : BaseEntity<WorkItemId>
     public string Stage { get; private set; } = "inbox";
     public string Priority { get; private set; } = "normal";
     public string? PlannedFor { get; private set; }
+    public DateTime? DeletedAt { get; private set; }
     public bool Archived { get; private set; }
     public int Revision { get; private set; }
     public ConnectionId? ConnectionId { get; private set; }
@@ -40,6 +41,7 @@ public sealed class WorkItem : BaseEntity<WorkItemId>
     public DateTime? SourceUpdated { get; private set; }
 
     private WorkItem() { }
+    public void SetDeleted(bool deleted) { DeletedAt = deleted ? DateTime.UtcNow : null; Revision++; Modified = DateTime.UtcNow; }
     public void SetDocuments(IEnumerable<Guid> ids) => DocumentIds = ids.Distinct().ToArray();
     public void SetOwner(Guid owner) => OwnerId = owner;
     public void SetCollaboration(Guid? workspace, Guid? assignee, string milestone) { WorkspaceId = workspace; AssigneeId = assignee; Milestone = milestone; }

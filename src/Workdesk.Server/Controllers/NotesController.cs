@@ -13,4 +13,7 @@ public sealed class NotesController(INoteService notes) : ControllerBase
     public Task<List<NoteResponse>> Import(ImportNotesRequest request, CancellationToken ct) => notes.Import(request, ct);
     [HttpGet("export")]
     public async Task<FileContentResult> Export(CancellationToken ct) => File(await notes.Export(ct), "application/zip", "workdesk-notes.zip");
+    [HttpGet("trash")] public Task<List<NoteResponse>> Trash(CancellationToken ct) => notes.GetDeleted(ct);
+    [HttpDelete("{id:guid}")] public Task<NoteResponse> Delete(Guid id, [FromQuery] int revision, CancellationToken ct) => notes.SetDeleted(id, revision, true, ct);
+    [HttpPost("{id:guid}/restore")] public Task<NoteResponse> Restore(Guid id, [FromQuery] int revision, CancellationToken ct) => notes.SetDeleted(id, revision, false, ct);
 }

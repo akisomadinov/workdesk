@@ -8,6 +8,7 @@ import {
     DialogActions,
     DialogContent,
     DialogTitle,
+    Divider,
     IconButton,
     Menu,
     MenuItem,
@@ -18,6 +19,7 @@ import {
 import MoreHorizRounded from "@mui/icons-material/MoreHorizRounded";
 import LockOutlined from "@mui/icons-material/LockOutlined";
 import GroupsOutlined from "@mui/icons-material/GroupsOutlined";
+import DeleteMaterialDialog from "@/common/DeleteMaterialDialog";
 import NewDocumentDialog from "@/common/NewDocumentDialog";
 import { Controller, useWatch } from "react-hook-form";
 import { useNavigate } from "react-router-dom";
@@ -41,6 +43,7 @@ export default function NoteDocument({ note, notes }: { note: NoteItem; notes: N
     const [linksOpen, setLinksOpen] = useState(false);
     const [childOpen, setChildOpen] = useState(false);
     const [historyOpen, setHistoryOpen] = useState(false);
+    const [remove, setRemove] = useState(false);
     const [archiveOpen, setArchiveOpen] = useState(false);
     const { data: history = [] } = useNotesHistoryQuery({ id: note.id }, { skip: !historyOpen });
     const navigate = useNavigate();
@@ -131,8 +134,29 @@ export default function NoteDocument({ note, notes }: { note: NoteItem; notes: N
                     >
                         {note.archived ? "Вернуть из архива" : "В архив"}
                     </MenuItem>
+                    <Divider />
+                    <MenuItem
+                        disabled={!note.canEdit}
+                        sx={{ color: "error.main" }}
+                        onClick={() => {
+                            setMenu(null);
+                            setRemove(true);
+                        }}
+                    >
+                        Удалить
+                    </MenuItem>
                 </Menu>
             </Stack>
+            {remove && (
+                <DeleteMaterialDialog
+                    kind="note"
+                    item={note}
+                    prepare={editor.flush}
+                    getRevision={() => editor.revision.current}
+                    onClose={() => setRemove(false)}
+                    onDeleted={() => navigate("/notes")}
+                />
+            )}
             {childOpen && <NewDocumentDialog parent={note} onClose={() => setChildOpen(false)} />}
             {editor.error && <Alert severity="error">{editor.error}</Alert>}
             {editor.recovery && (

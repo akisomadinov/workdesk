@@ -9,6 +9,7 @@ import {
     DialogContent,
     DialogTitle,
     Drawer,
+    Divider,
     IconButton,
     Link,
     Menu,
@@ -40,6 +41,7 @@ import { dateTime, localDate, safeLink, stages } from "@/common/models";
 import type { TaskItem } from "@/common/models";
 import type { TaskValues } from "./validation";
 import TaskPropertiesDialog from "./tasks/TaskPropertiesDialog";
+import DeleteMaterialDialog from "@/common/DeleteMaterialDialog";
 import TaskDocuments from "./tasks/TaskDocuments";
 export default function TaskDrawer({ task, onClose }: { task: TaskItem; onClose: () => void }) {
     const editor = useTaskEditor(task);
@@ -54,6 +56,7 @@ export default function TaskDrawer({ task, onClose }: { task: TaskItem; onClose:
         formState: { errors }
     } = editor.form;
     const values = useWatch({ control });
+    const [remove, setRemove] = useState(false);
     const [confirm, setConfirm] = useState(false);
     const [closeWarning, setCloseWarning] = useState(false);
     const [properties, setProperties] = useState(false);
@@ -531,8 +534,28 @@ export default function TaskDrawer({ task, onClose }: { task: TaskItem; onClose:
                 >
                     {task.archived ? "Вернуть из архива" : "В архив"}
                 </MenuItem>
+                <Divider />
+                <MenuItem
+                    sx={{ color: "error.main" }}
+                    onClick={() => {
+                        setMenu(null);
+                        setRemove(true);
+                    }}
+                >
+                    Удалить
+                </MenuItem>
             </Menu>
             {properties && <TaskPropertiesDialog task={task} form={editor.form} onClose={() => setProperties(false)} />}
+            {remove && (
+                <DeleteMaterialDialog
+                    kind="task"
+                    item={task}
+                    prepare={editor.flush}
+                    getRevision={() => editor.revision.current}
+                    onClose={() => setRemove(false)}
+                    onDeleted={onClose}
+                />
+            )}
             <Dialog open={confirm} onClose={() => setConfirm(false)}>
                 <DialogTitle>{task.archived ? "Вернуть задачу?" : "Убрать задачу в архив?"}</DialogTitle>
                 <DialogContent>Описание, заметки и связанные документы сохранятся.</DialogContent>

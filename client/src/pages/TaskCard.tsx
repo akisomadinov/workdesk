@@ -10,10 +10,11 @@ interface Props {
     source: string;
     onOpen: () => void;
     onToday: () => void;
+    onDelete: () => void;
     onStage: (stage: string) => void;
     onDrag: (id: string | null) => void;
 }
-function TaskCard({ task, source, onOpen, onToday, onStage, onDrag }: Props) {
+function TaskCard({ task, source, onOpen, onToday, onStage, onDrag, onDelete }: Props) {
     const [menu, setMenu] = useState<HTMLElement | null>(null);
     const urgent = task.priority === "urgent" || task.priority === "high";
     const waiting = task.stage === "waiting";
@@ -147,6 +148,16 @@ function TaskCard({ task, source, onOpen, onToday, onStage, onDrag }: Props) {
                             {stage.label}
                         </MenuItem>
                     ))}
+                <Divider />
+                <MenuItem
+                    sx={{ color: "error.main" }}
+                    onClick={() => {
+                        setMenu(null);
+                        onDelete();
+                    }}
+                >
+                    Удалить
+                </MenuItem>
             </Menu>
         </>
     );

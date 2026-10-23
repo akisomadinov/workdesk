@@ -148,6 +148,9 @@ export default function NotesPage() {
                         <MenuItem component="a" href="/api/Notes/export" download onClick={() => setMenu(null)}>
                             Скачать документы .zip
                         </MenuItem>
+                        <MenuItem component={Link} to="/trash" onClick={() => setMenu(null)}>
+                            Корзина
+                        </MenuItem>
                     </Menu>
                     <input
                         ref={fileInput}
