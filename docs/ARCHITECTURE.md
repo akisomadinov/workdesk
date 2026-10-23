@@ -5,7 +5,7 @@
 - Workdesk.Server: HTTP, cookie-аутентификация, локальный и командный режимы, ограничение попыток входа, worker.
 - Workdesk.Services: проверки доступа, задачи, документы, участники, синхронизация, уведомления и доставка.
 - Workdesk.Data: EF Core/SQLite, strongly typed ID, репозитории, UnitOfWork, миграции.
-- client: React/TypeScript, MUI, RTK Query из OpenAPI, Zustand для интерфейса, React Hook Form/Zod, CodeMirror/Markdown.
+- client: React/TypeScript, MUI, RTK Query из OpenAPI, Zustand для интерфейса, React Hook Form/Zod, Tiptap для визуального редактирования, Markdown как формат хранения, CodeMirror для исходника.
 
 ## Авторизация
 

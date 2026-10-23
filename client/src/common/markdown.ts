@@ -49,6 +49,7 @@ export function wikiPlugin(notes: NoteLink[], workspace?: string | null): Plugin
 }
 export function linksTo(body: string, note: NoteLink) {
     const text = body.replace(/```[\s\S]*?```|`[^`]*`/g, "");
+    if (text.includes(`](/notes/${note.id})`)) return true;
     return [...text.matchAll(/\[\[([^\]\n|]+)(?:\|[^\]\n]*)?\]\]/g)].some(
         (match) =>
             match[1] === `note:${note.id}` || match[1].trim().toLocaleLowerCase() === note.title.toLocaleLowerCase()
@@ -69,7 +70,12 @@ export function noteTree<T extends NoteLink & { parentId?: string | null }>(note
     return result;
 }
 export const noteTemplates = {
-    blank: { label: "Пустая заметка", title: "Новая заметка", body: "" },
+    blank: { label: "Пустой документ", title: "Новый документ", body: "" },
+    daily: {
+        label: "Ежедневник",
+        title: "Ежедневник",
+        body: "## Главное на сегодня\n\n- [ ] \n\n## Что сделано\n\n\n## На чём остановился\n\n\n## Завтра\n\n- [ ] \n"
+    },
     meeting: {
         label: "Встреча",
         title: "Встреча",

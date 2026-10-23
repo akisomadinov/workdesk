@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Alert, Box, Button, Stack, TextField, Typography } from "@mui/material";
+import { Alert, Box, Button, Stack, Tab, Tabs, TextField, Typography } from "@mui/material";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -24,6 +24,8 @@ export default function AccountPage({ mode }: { mode: "setup" | "login" | "join"
     const [setup] = useAuthSetupMutation();
     const [login] = useAuthLoginMutation();
     const [accept] = useAuthAcceptMutation();
+    const [joinMode, setJoinMode] = useState<"new" | "existing">("new");
+    const creating = mode === "setup" || (mode === "join" && joinMode === "new");
     const [error, setError] = useState("");
     const navigate = useNavigate();
     async function submit(values: Values) {
@@ -33,7 +35,7 @@ export default function AccountPage({ mode }: { mode: "setup" | "login" | "join"
             else if (mode === "login") await login({ credentialsRequest: { ...values, login: values.email } }).unwrap();
             else await accept({ acceptInvitationRequest: { ...values, token: location.hash.slice(1) } }).unwrap();
             store.dispatch(api.util.resetApiState());
-            navigate("/", { replace: true });
+            navigate(mode === "login" ? "/" : "/team", { replace: true });
         } catch (failure) {
             setError(message(failure));
         }
@@ -44,7 +46,7 @@ export default function AccountPage({ mode }: { mode: "setup" | "login" | "join"
                 <Stack gap={2.5}>
                     <Typography variant="h5">
                         {mode === "setup"
-                            ? "Твоя учётная запись"
+                            ? "Настроить командную работу"
                             : mode === "join"
                               ? "Присоединиться к команде"
                               : "Войти в Workdesk"}
@@ -53,11 +55,25 @@ export default function AccountPage({ mode }: { mode: "setup" | "login" | "join"
                         {mode === "setup"
                             ? "Личные материалы останутся твоими. В общие пространства можно приглашать участников."
                             : mode === "join"
-                              ? "Для нового аккаунта придумай пароль от 12 символов. Если аккаунт уже есть, введи его почту и пароль."
+                              ? "Войди или создай аккаунт — приглашение добавит тебя в команду автоматически."
                               : "Открой личные задачи и доступные тебе командные пространства."}
                     </Typography>
-                    {mode !== "login" && <TextField label="Имя" {...form.register("name")} autoComplete="name" />}
-                    {mode !== "login" && (
+                    {mode === "join" && (
+                        <Tabs
+                            value={joinMode}
+                            onChange={(_, value: "new" | "existing") => {
+                                setJoinMode(value);
+                                setError("");
+                            }}
+                            variant="fullWidth"
+                            aria-label="Аккаунт для приглашения"
+                        >
+                            <Tab value="new" label="Создать аккаунт" />
+                            <Tab value="existing" label="Уже есть аккаунт" />
+                        </Tabs>
+                    )}
+                    {creating && <TextField label="Имя" {...form.register("name")} autoComplete="name" />}
+                    {creating && (
                         <TextField
                             label="Логин"
                             {...form.register("login")}
@@ -76,10 +92,10 @@ export default function AccountPage({ mode }: { mode: "setup" | "login" | "join"
                         label="Пароль"
                         type="password"
                         {...form.register("password")}
-                        autoComplete={mode === "login" ? "current-password" : "new-password"}
+                        autoComplete={creating ? "new-password" : "current-password"}
                         error={!!form.formState.errors.password}
                         helperText={
-                            form.formState.errors.password?.message ?? (mode !== "login" ? "Не меньше 12 символов" : "")
+                            form.formState.errors.password?.message ?? (creating ? "Не меньше 12 символов" : "")
                         }
                     />
                     {error && <Alert severity="error">{error}</Alert>}

@@ -1,342 +1,51 @@
-import { useEffect, useState } from "react";
+import { lazy, useRef, useState } from "react";
 import {
     Alert,
-    Accordion,
-    AccordionSummary,
-    AccordionDetails,
     Box,
     Button,
-    Card,
-    Chip,
-    Dialog,
-    DialogActions,
-    DialogContent,
-    DialogTitle,
+    CircularProgress,
     IconButton,
     List,
     ListItemButton,
     ListItemText,
+    Menu,
     MenuItem,
     Stack,
     TextField,
+    Tooltip,
     Typography
 } from "@mui/material";
 import AddRounded from "@mui/icons-material/AddRounded";
-import PushPinOutlined from "@mui/icons-material/PushPinOutlined";
-import HistoryRounded from "@mui/icons-material/HistoryRounded";
+import DescriptionOutlined from "@mui/icons-material/DescriptionOutlined";
+import MoreHorizRounded from "@mui/icons-material/MoreHorizRounded";
+import ChevronRightRounded from "@mui/icons-material/ChevronRightRounded";
 import ExpandMoreRounded from "@mui/icons-material/ExpandMoreRounded";
-import { Controller, useWatch } from "react-hook-form";
-import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-import {
-    useAuthSessionQuery,
-    useNotesSaveMutation,
-    useNotesImportMutation,
-    useNotesHistoryQuery,
-    useTeamGetQuery,
-    useTasksGetQuery
-} from "@/api/autogen/workdesk";
-import useNoteEditor, { useNotes } from "@/hooks/useNotebook";
-import type { NoteItem } from "@/hooks/useNotebook";
-import { dateTime, localDate, message } from "@/common/models";
-import { downloadMarkdown, linksTo, noteTemplates, noteTree } from "@/common/markdown";
-import MarkdownEditor from "@/common/MarkdownEditor";
-import MarkdownView from "@/common/MarkdownView";
+import ArrowBackRounded from "@mui/icons-material/ArrowBackRounded";
+import SearchRounded from "@mui/icons-material/SearchRounded";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { useNotesImportMutation, useTeamGetQuery } from "@/api/autogen/workdesk";
+import { useNotes } from "@/hooks/useNotebook";
+import { dateTime, message } from "@/common/models";
+import { noteTree } from "@/common/markdown";
 import { useWorkspaceStore } from "@/stores/useWorkspaceStore";
+import NewDocumentDialog from "@/common/NewDocumentDialog";
+const NoteDocument = lazy(() => import("./notes/NoteDocument"));
 
-function NoteDocument({ note, notes }: { note: NoteItem; notes: NoteItem[] }) {
-    const editor = useNoteEditor(note);
-    const { control, register, setValue } = editor.form;
-    const values = useWatch({ control });
-    const { data: spaces = [] } = useTeamGetQuery();
-    const { data: session } = useAuthSessionQuery();
-    const { data: tasks = [] } = useTasksGetQuery();
-    const [historyOpen, setHistoryOpen] = useState(false);
-    const [archiveOpen, setArchiveOpen] = useState(false);
-    const { data: history = [] } = useNotesHistoryQuery({ id: note.id }, { skip: !historyOpen });
-    const navigate = useNavigate();
-    const backlinks = notes.filter((other) => other.id !== note.id && linksTo(other.body, note));
-    return (
-        <Stack gap={2}>
-            <Stack direction="row" alignItems="center" gap={1} flexWrap="wrap">
-                <Typography
-                    variant="caption"
-                    sx={{ mr: "auto" }}
-                    color={editor.error ? "error" : "text.secondary"}
-                    role="status"
-                >
-                    {editor.status}
-                </Typography>
-                <IconButton
-                    aria-label={values.pinned ? "Открепить заметку" : "Закрепить заметку"}
-                    disabled={!note.canEdit}
-                    color={values.pinned ? "primary" : "default"}
-                    onClick={() => setValue("pinned", !values.pinned, { shouldDirty: true })}
-                >
-                    <PushPinOutlined />
-                </IconButton>
-                <Button size="small" startIcon={<HistoryRounded />} onClick={() => setHistoryOpen(true)}>
-                    История
-                </Button>
-                <Button
-                    size="small"
-                    onClick={() => downloadMarkdown(values.title ?? note.title, values.body ?? note.body)}
-                >
-                    .md
-                </Button>
-                <Button size="small" disabled={!note.canEdit} onClick={() => setArchiveOpen(true)}>
-                    {note.archived ? "Вернуть" : "В архив"}
-                </Button>
-            </Stack>
-            {editor.error && <Alert severity="error">{editor.error}</Alert>}
-            {editor.recovery && (
-                <Alert
-                    severity="warning"
-                    action={
-                        <Stack>
-                            <Button size="small" onClick={editor.recover}>
-                                Восстановить
-                            </Button>
-                            <Button size="small" onClick={editor.discardRecovery}>
-                                Удалить
-                            </Button>
-                        </Stack>
-                    }
-                >
-                    Есть черновик, который не попал в базу.
-                </Alert>
-            )}
-            <TextField
-                label="Название заметки"
-                {...register("title")}
-                disabled={!note.canEdit}
-                error={!!editor.form.formState.errors.title}
-                helperText={editor.form.formState.errors.title?.message}
-            />
-            <Accordion disableGutters elevation={0} sx={{ border: 1, borderColor: "divider", borderRadius: 2 }}>
-                <AccordionSummary expandIcon={<ExpandMoreRounded />}>
-                    <Typography variant="body2">
-                        Настройки страницы ·{" "}
-                        {values.workspaceId
-                            ? (spaces.find((space) => space.id === values.workspaceId)?.name ?? "Общее пространство")
-                            : "Только мне"}
-                    </Typography>
-                </AccordionSummary>
-                <AccordionDetails>
-                    <Stack gap={2}>
-                        <Stack direction={{ xs: "column", sm: "row" }} gap={1.5}>
-                            <TextField label="Проект / папка" {...register("project")} disabled={!note.canEdit} />
-                            <TextField label="Теги через запятую" {...register("tags")} disabled={!note.canEdit} />
-                        </Stack>
-                        <TextField
-                            select
-                            label="Кому доступна заметка"
-                            value={values.workspaceId ?? ""}
-                            {...register("workspaceId")}
-                            onChange={(event) => {
-                                setValue("workspaceId", event.target.value, { shouldDirty: true });
-                                setValue("parentId", "", { shouldDirty: true });
-                            }}
-                            disabled={!note.canEdit || note.ownerId !== session?.userId}
-                            helperText="В общем пространстве участники увидят весь текст и историю этой заметки."
-                        >
-                            <MenuItem value="">Только мне</MenuItem>
-                            {spaces
-                                .filter((space) => space.role !== "reader" || space.id === note.workspaceId)
-                                .map((space) => (
-                                    <MenuItem key={space.id} value={space.id}>
-                                        {space.name}
-                                    </MenuItem>
-                                ))}
-                        </TextField>
-                        <TextField
-                            select
-                            label="Родительская страница"
-                            value={values.parentId ?? ""}
-                            {...register("parentId")}
-                            disabled={!note.canEdit}
-                        >
-                            <MenuItem value="">Верхний уровень</MenuItem>
-                            {notes
-                                .filter(
-                                    (item) =>
-                                        item.id !== note.id &&
-                                        !item.archived &&
-                                        (item.workspaceId ?? "") === (values.workspaceId ?? "")
-                                )
-                                .map((item) => (
-                                    <MenuItem key={item.id} value={item.id}>
-                                        {item.title}
-                                    </MenuItem>
-                                ))}
-                        </TextField>
-                    </Stack>
-                </AccordionDetails>
-            </Accordion>
-            <Controller
-                control={control}
-                name="body"
-                render={({ field }) => (
-                    <MarkdownEditor
-                        value={field.value}
-                        onChange={field.onChange}
-                        label="Текст заметки"
-                        notes={notes}
-                        workspaceId={values.workspaceId}
-                        readOnly={!note.canEdit}
-                        minHeight={390}
-                    />
-                )}
-            />
-            {note.canEdit && (
-                <Stack direction={{ xs: "column", sm: "row" }} gap={1.5}>
-                    <TextField
-                        select
-                        label="Вставить ссылку на заметку"
-                        value=""
-                        onChange={(event) => {
-                            const target = notes.find((item) => item.id === event.target.value);
-                            if (target)
-                                setValue(
-                                    "body",
-                                    editor.form.getValues("body") + `\n[[note:${target.id}|${target.title}]]\n`,
-                                    { shouldDirty: true }
-                                );
-                        }}
-                    >
-                        <MenuItem value="" disabled>
-                            Выбери заметку
-                        </MenuItem>
-                        {notes
-                            .filter((item) => item.id !== note.id && !item.archived)
-                            .map((item) => (
-                                <MenuItem key={item.id} value={item.id}>
-                                    {item.title}
-                                </MenuItem>
-                            ))}
-                    </TextField>
-                    <TextField
-                        select
-                        label="Вставить ссылку на задачу"
-                        value=""
-                        onChange={(event) => {
-                            const task = tasks.find((item) => item.id === event.target.value);
-                            if (task)
-                                setValue(
-                                    "body",
-                                    editor.form.getValues("body") + `\n[${task.title}](/board?task=${task.id})\n`,
-                                    { shouldDirty: true }
-                                );
-                        }}
-                    >
-                        <MenuItem value="" disabled>
-                            Выбери задачу
-                        </MenuItem>
-                        {tasks
-                            .filter((task) => !task.archived)
-                            .map((task) => (
-                                <MenuItem key={task.id} value={task.id}>
-                                    {task.title}
-                                </MenuItem>
-                            ))}
-                    </TextField>
-                </Stack>
-            )}
-            <Stack direction="row" justifyContent="space-between" gap={2}>
-                <Typography variant="caption" color="text.secondary">
-                    {(values.body ?? "").length} символов · обновлено {dateTime(note.modified ?? note.created)}
-                </Typography>
-                {note.canEdit && (
-                    <Button size="small" onClick={() => void editor.flush()}>
-                        Сохранить сейчас
-                    </Button>
-                )}
-            </Stack>
-            {backlinks.length > 0 && (
-                <Box sx={{ borderTop: 1, borderColor: "divider", pt: 2 }}>
-                    <Typography variant="h6">Ссылаются на эту заметку</Typography>
-                    {backlinks.map((other) => (
-                        <Button
-                            key={other.id}
-                            onClick={async () => {
-                                if (await editor.flush()) navigate(`/notes/${other.id}`);
-                            }}
-                        >
-                            {other.title}
-                        </Button>
-                    ))}
-                </Box>
-            )}
-            <Dialog open={historyOpen} onClose={() => setHistoryOpen(false)} maxWidth="md">
-                <DialogTitle>История заметки</DialogTitle>
-                <DialogContent>
-                    <Stack gap={2}>
-                        {history.length === 0 && (
-                            <Typography color="text.secondary">
-                                Предыдущие версии появятся после изменения текста.
-                            </Typography>
-                        )}
-                        {history.map((version) => (
-                            <Card variant="outlined" key={version.id} sx={{ p: 2 }}>
-                                <Typography variant="caption">
-                                    Версия {version.number} · {dateTime(version.created)}
-                                </Typography>
-                                <Box sx={{ maxHeight: 220, overflow: "auto" }}>
-                                    <MarkdownView value={version.body ?? ""} />
-                                </Box>
-                                {note.canEdit && (
-                                    <Button
-                                        onClick={() => {
-                                            setValue("body", version.body ?? "", { shouldDirty: true });
-                                            setValue("title", version.title ?? note.title, { shouldDirty: true });
-                                            setHistoryOpen(false);
-                                        }}
-                                    >
-                                        Восстановить эту версию
-                                    </Button>
-                                )}
-                            </Card>
-                        ))}
-                    </Stack>
-                </DialogContent>
-                <DialogActions>
-                    <Button onClick={() => setHistoryOpen(false)}>Закрыть</Button>
-                </DialogActions>
-            </Dialog>
-            <Dialog open={archiveOpen} onClose={() => setArchiveOpen(false)}>
-                <DialogTitle>{note.archived ? "Вернуть заметку?" : "Убрать заметку в архив?"}</DialogTitle>
-                <DialogContent>Текст и история сохранятся.</DialogContent>
-                <DialogActions>
-                    <Button onClick={() => setArchiveOpen(false)}>Отмена</Button>
-                    <Button
-                        onClick={async () => {
-                            setValue("archived", !note.archived, { shouldDirty: true });
-                            if (await editor.flush()) {
-                                setArchiveOpen(false);
-                                navigate("/notes");
-                            }
-                        }}
-                    >
-                        Подтвердить
-                    </Button>
-                </DialogActions>
-            </Dialog>
-        </Stack>
-    );
-}
 export default function NotesPage() {
     const { id } = useParams();
-    const [params] = useSearchParams();
+    const [params, setParams] = useSearchParams();
     const navigate = useNavigate();
     const { notes, isLoading, error } = useNotes();
     const { scope } = useWorkspaceStore();
-    const { data: session } = useAuthSessionQuery();
     const { data: spaces = [] } = useTeamGetQuery();
-    const [save] = useNotesSaveMutation();
-    const [importFiles] = useNotesImportMutation();
-    const [search, setSearch] = useState(params.get("q") ?? "");
-    useEffect(() => setSearch(params.get("q") ?? ""), [params]);
+    const [importFiles, { isLoading: importing }] = useNotesImportMutation();
+    const fileInput = useRef<HTMLInputElement>(null);
+    const search = params.get("q") ?? "";
     const [archive, setArchive] = useState(false);
+    const [createOpen, setCreateOpen] = useState(false);
+    const [menu, setMenu] = useState<HTMLElement | null>(null);
     const [failure, setFailure] = useState("");
+    const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
     const visible = notes.filter(
         (note) =>
             (scope === "all" || (scope === "mine" ? !note.workspaceId : note.workspaceId === scope)) &&
@@ -348,211 +57,260 @@ export default function NotesPage() {
     const selected = notes.find((note) => note.id === id);
     const canCreate =
         ["mine", "all"].includes(scope) || spaces.some((space) => space.id === scope && space.role !== "reader");
-    async function create(template: keyof typeof noteTemplates | "daily", parent?: NoteItem) {
-        const dailyTitle = `Ежедневник · ${localDate()}`;
-        const existing =
-            template === "daily"
-                ? notes.find(
-                      (note) =>
-                          note.ownerId === session?.userId &&
-                          !note.workspaceId &&
-                          note.title === dailyTitle &&
-                          !note.archived
-                  )
-                : null;
-        if (existing) {
-            navigate(`/notes/${existing.id}`);
-            return;
-        }
-        const source =
-            template === "daily"
-                ? {
-                      title: dailyTitle,
-                      body: `# ${dailyTitle}\n\n## Главное на сегодня\n\n- [ ] \n\n## Что сделал\n\n- \n\n## На чём остановился\n\n\n## Завтра\n\n- [ ] \n`
-                  }
-                : noteTemplates[template];
-        try {
-            const result = await save({
-                saveNoteRequest: {
-                    ...source,
-                    workspaceId: parent
-                        ? parent.workspaceId
-                        : template === "daily" || ["all", "mine"].includes(scope)
-                          ? null
-                          : scope,
-                    parentId: parent?.id
-                }
-            }).unwrap();
-            navigate(`/notes/${result.id}`);
-            setFailure("");
-        } catch (problem) {
-            setFailure(message(problem));
-        }
-    }
+    let hiddenDepth = Infinity;
+    const tree = noteTree(visible).filter(({ note, depth }) => {
+        if (search) return true;
+        if (depth > hiddenDepth) return false;
+        hiddenDepth = collapsed.has(note.id) ? depth : Infinity;
+        return true;
+    });
     return (
         <Stack gap={3}>
-            <Stack direction="row" justifyContent="space-between" alignItems="center" gap={2} flexWrap="wrap">
-                <Box>
-                    <Typography variant="h4">Документация</Typography>
-                    <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                        Markdown, рабочие записи и связанные знания.
-                    </Typography>
-                </Box>
-                <Stack direction="row" gap={1} flexWrap="wrap">
-                    {selected?.canEdit && (
-                        <Button onClick={() => void create("blank", selected)}>Вложенная страница</Button>
-                    )}
-                    <Button onClick={() => void create("daily")}>Ежедневник</Button>
-                    <Button component="a" href="/api/Notes/export" download>
-                        Экспорт .md
-                    </Button>
-                    {canCreate && (
-                        <Button component="label">
-                            Импорт .md
-                            <input
-                                type="file"
-                                accept=".md,.markdown,text/markdown"
-                                multiple
-                                hidden
-                                onChange={async (event) => {
-                                    const files = [...(event.target.files ?? [])];
-                                    event.target.value = "";
-                                    if (!files.length) return;
-                                    if (
-                                        files.length > 100 ||
-                                        files.reduce((sum, file) => sum + file.size, 0) > 5_000_000
-                                    ) {
-                                        setFailure("Выбери до 100 файлов общим объёмом до 5 МБ.");
-                                        return;
-                                    }
-                                    try {
-                                        await importFiles({
-                                            importNotesRequest: {
-                                                workspaceId: ["all", "mine"].includes(scope) ? null : scope,
-                                                files: await Promise.all(
-                                                    files.map(async (file) => ({
-                                                        name: file.name,
-                                                        content: await file.text()
-                                                    }))
-                                                )
-                                            }
-                                        }).unwrap();
-                                    } catch (problem) {
-                                        setFailure(message(problem));
-                                    }
-                                }}
-                            />
-                        </Button>
-                    )}
-                    <Button
-                        disabled={!canCreate}
-                        variant="contained"
-                        startIcon={<AddRounded />}
-                        onClick={() => void create("blank")}
-                    >
-                        Заметка
-                    </Button>
-                </Stack>
+            <Stack direction="row" alignItems="center" justifyContent="space-between" gap={1}>
+                <Typography variant="h4">Документы</Typography>
+                <Button
+                    variant="contained"
+                    startIcon={<AddRounded />}
+                    disabled={!canCreate}
+                    onClick={() => setCreateOpen(true)}
+                >
+                    Новый документ
+                </Button>
             </Stack>
-            {(failure || error) && <Alert severity="error">{failure || message(error)}</Alert>}
+            {(failure || error) && (
+                <Alert severity="error" onClose={() => setFailure("")}>
+                    {failure || message(error)}
+                </Alert>
+            )}
             <Box
                 sx={{
                     display: "grid",
-                    gridTemplateColumns: { xs: "1fr", lg: "270px minmax(0, 1fr)" },
-                    gap: 3,
+                    gridTemplateColumns: { xs: "1fr", lg: "240px minmax(0, 1fr)" },
+                    gap: { xs: 2, lg: 4 },
                     alignItems: "start"
                 }}
             >
-                <Stack gap={1.5}>
-                    <TextField
-                        label="Поиск в документации"
-                        value={search}
-                        onChange={(event) => setSearch(event.target.value)}
-                    />
-                    <Stack direction="row" gap={1}>
-                        <Chip
-                            label="Заметки"
-                            onClick={() => setArchive(false)}
-                            color={!archive ? "primary" : "default"}
-                        />
-                        <Chip label="Архив" onClick={() => setArchive(true)} color={archive ? "primary" : "default"} />
-                    </Stack>
-                    <List sx={{ maxHeight: { lg: "65vh" }, overflowY: "auto" }}>
-                        {noteTree(visible).map(({ note, depth }) => (
-                            <ListItemButton
-                                key={note.id}
-                                selected={note.id === id}
-                                onClick={() => navigate(`/notes/${note.id}`)}
-                                sx={{
-                                    borderRadius: 2,
-                                    mb: 0.5,
-                                    pl: 2 + Math.min(depth, 8) * 1.5,
-                                    borderLeft: depth ? 1 : 0,
-                                    borderColor: "divider"
-                                }}
-                            >
-                                <ListItemText
-                                    primary={`${note.pinned ? "• " : ""}${note.title}`}
-                                    secondary={note.project || (note.workspaceId ? "Общая заметка" : "Личная заметка")}
-                                    primaryTypographyProps={{
-                                        fontSize: 13,
-                                        fontWeight: 600,
-                                        sx: { overflowWrap: "anywhere" }
-                                    }}
-                                />
-                            </ListItemButton>
-                        ))}
-                    </List>
-                    {canCreate && (
-                        <TextField
-                            select
-                            label="Создать по шаблону"
-                            value=""
-                            onChange={(event) => void create(event.target.value as keyof typeof noteTemplates)}
-                        >
-                            {Object.entries(noteTemplates).map(([key, value]) => (
-                                <MenuItem key={key} value={key}>
-                                    {value.label}
-                                </MenuItem>
-                            ))}
-                        </TextField>
-                    )}
-                </Stack>
-                <Box
+                <Stack
+                    gap={1.5}
                     sx={{
-                        p: { xs: 1.5, sm: 3 },
-                        border: 1,
-                        borderColor: "divider",
-                        borderRadius: 3,
-                        bgcolor: "background.paper",
-                        minWidth: 0
+                        display: { xs: id ? "none" : "flex", lg: "flex" },
+                        borderRight: { lg: "1px solid" },
+                        borderColor: { lg: "divider" },
+                        pr: { lg: 3 },
+                        minHeight: { lg: "calc(100vh - 210px)" }
                     }}
                 >
+                    <TextField
+                        placeholder="Найти документ"
+                        value={search}
+                        onChange={(event) =>
+                            setParams(event.target.value ? { q: event.target.value } : {}, { replace: true })
+                        }
+                        slotProps={{
+                            htmlInput: { "aria-label": "Найти документ" },
+                            input: {
+                                startAdornment: <SearchRounded sx={{ mr: 1, color: "text.disabled", fontSize: 18 }} />
+                            }
+                        }}
+                    />
+                    <Stack direction="row" alignItems="center" justifyContent="space-between">
+                        <Typography variant="caption" fontWeight={650} color="text.secondary">
+                            {archive ? "Архив" : "Все документы"} · {visible.length}
+                        </Typography>
+                        <Tooltip title="Действия с библиотекой">
+                            <IconButton
+                                size="small"
+                                aria-label="Действия с библиотекой"
+                                onClick={(event) => setMenu(event.currentTarget)}
+                            >
+                                <MoreHorizRounded fontSize="small" />
+                            </IconButton>
+                        </Tooltip>
+                    </Stack>
+                    <Menu anchorEl={menu} open={!!menu} onClose={() => setMenu(null)}>
+                        <MenuItem
+                            onClick={() => {
+                                setArchive(!archive);
+                                setMenu(null);
+                            }}
+                        >
+                            {archive ? "Открыть документы" : "Открыть архив"}
+                        </MenuItem>
+                        <MenuItem
+                            disabled={!canCreate || importing}
+                            onClick={() => {
+                                fileInput.current?.click();
+                                setMenu(null);
+                            }}
+                        >
+                            Импорт Markdown
+                        </MenuItem>
+                        <MenuItem component="a" href="/api/Notes/export" download onClick={() => setMenu(null)}>
+                            Скачать документы .zip
+                        </MenuItem>
+                    </Menu>
+                    <input
+                        ref={fileInput}
+                        type="file"
+                        accept=".md,.markdown,text/markdown"
+                        multiple
+                        hidden
+                        onChange={async (event) => {
+                            const files = [...(event.target.files ?? [])];
+                            event.target.value = "";
+                            if (!files.length) return;
+                            if (files.length > 100 || files.reduce((sum, file) => sum + file.size, 0) > 5_000_000) {
+                                setFailure("Выбери до 100 файлов общим объёмом до 5 МБ.");
+                                return;
+                            }
+                            try {
+                                await importFiles({
+                                    importNotesRequest: {
+                                        workspaceId: ["all", "mine"].includes(scope) ? null : scope,
+                                        files: await Promise.all(
+                                            files.map(async (file) => ({ name: file.name, content: await file.text() }))
+                                        )
+                                    }
+                                }).unwrap();
+                                setFailure("");
+                            } catch (problem) {
+                                setFailure(message(problem));
+                            }
+                        }}
+                    />
+                    {(isLoading || importing) && <CircularProgress size={20} aria-label="Загрузка документов" />}
+                    <List sx={{ p: 0, maxHeight: { lg: "70vh" }, overflowY: "auto" }}>
+                        {tree.map(({ note, depth }) => {
+                            const children = visible.some((item) => item.parentId === note.id);
+                            return (
+                                <Box
+                                    key={note.id}
+                                    sx={{
+                                        display: "flex",
+                                        alignItems: "center",
+                                        pl: Math.min(depth, 6) * 1.5,
+                                        mb: 0.25
+                                    }}
+                                >
+                                    {children ? (
+                                        <IconButton
+                                            size="small"
+                                            aria-label={`${collapsed.has(note.id) ? "Развернуть" : "Свернуть"} ${note.title}`}
+                                            aria-expanded={!collapsed.has(note.id)}
+                                            onClick={() =>
+                                                setCollapsed((previous) => {
+                                                    const next = new Set(previous);
+                                                    if (next.has(note.id)) next.delete(note.id);
+                                                    else next.add(note.id);
+                                                    return next;
+                                                })
+                                            }
+                                        >
+                                            {collapsed.has(note.id) ? (
+                                                <ChevronRightRounded sx={{ fontSize: 16 }} />
+                                            ) : (
+                                                <ExpandMoreRounded sx={{ fontSize: 16 }} />
+                                            )}
+                                        </IconButton>
+                                    ) : (
+                                        <DescriptionOutlined
+                                            sx={{ ml: 1, mr: 0.75, fontSize: 16, color: "text.disabled" }}
+                                        />
+                                    )}
+                                    <ListItemButton
+                                        selected={note.id === id}
+                                        onClick={() => navigate(`/notes/${note.id}`)}
+                                        sx={{ minWidth: 0, borderRadius: 1, px: 1, py: 0.5 }}
+                                    >
+                                        <ListItemText
+                                            primary={`${note.pinned ? "• " : ""}${note.title}`}
+                                            primaryTypographyProps={{ fontSize: 13, noWrap: true, title: note.title }}
+                                        />
+                                    </ListItemButton>
+                                </Box>
+                            );
+                        })}
+                    </List>
+                    {!isLoading && !visible.length && (
+                        <Typography variant="body2" color="text.secondary">
+                            {search ? "Ничего не найдено" : archive ? "Архив пуст" : "Здесь появятся твои документы"}
+                        </Typography>
+                    )}
+                </Stack>
+                <Box sx={{ minWidth: 0, width: "100%", maxWidth: 840, mx: "auto", px: { lg: 2 } }}>
+                    {id && (
+                        <Button
+                            component={Link}
+                            to="/notes"
+                            startIcon={<ArrowBackRounded />}
+                            color="inherit"
+                            sx={{ display: { lg: "none" }, mb: 2 }}
+                        >
+                            Все документы
+                        </Button>
+                    )}
                     {selected ? (
                         <NoteDocument key={selected.id} note={selected} notes={notes} />
                     ) : (
-                        <Stack gap={2} sx={{ py: 5, px: 2 }}>
+                        <Stack gap={2} sx={{ py: { xs: 2, lg: 3 } }}>
+                            <DescriptionOutlined sx={{ fontSize: 32, color: "text.disabled" }} />
                             <Typography variant="h5">
                                 {isLoading
-                                    ? "Загружаем заметки…"
+                                    ? "Загружаем документы…"
                                     : id
-                                      ? "Заметка недоступна"
-                                      : "Рабочие знания рядом с задачами"}
+                                      ? "Документ недоступен"
+                                      : visible.length
+                                        ? "Продолжить работу"
+                                        : "Место для рабочих знаний"}
                             </Typography>
-                            <Typography color="text.secondary" variant="body2">
+                            <Typography variant="body2" color="text.secondary">
                                 {id
-                                    ? "Возможно, у тебя нет доступа к этому материалу."
-                                    : "Выбери заметку слева или создай новую. Поддерживаются заголовки, списки, таблицы, чек-листы и блоки кода. Связывай записи через [[название заметки]]."}
+                                    ? "Возможно, документ удалён или у тебя нет доступа."
+                                    : visible.length
+                                      ? "Недавно изменённые документы в этом пространстве."
+                                      : "Инструкции, решения и записи встреч — для себя или команды."}
                             </Typography>
-                            {!id && canCreate && (
-                                <Button sx={{ alignSelf: "start" }} onClick={() => void create("blank")}>
-                                    Создать первую заметку
+                            {!id && !visible.length && canCreate && (
+                                <Button
+                                    variant="outlined"
+                                    sx={{ alignSelf: "start" }}
+                                    onClick={() => setCreateOpen(true)}
+                                >
+                                    Создать документ
                                 </Button>
+                            )}
+                            {!id && (
+                                <List>
+                                    {[...visible]
+                                        .sort((a, b) =>
+                                            (b.modified ?? b.created ?? "").localeCompare(a.modified ?? a.created ?? "")
+                                        )
+                                        .slice(0, 6)
+                                        .map((note) => (
+                                            <ListItemButton
+                                                key={note.id}
+                                                component={Link}
+                                                to={`/notes/${note.id}`}
+                                                sx={{ borderBottom: 1, borderColor: "divider", px: 0, py: 1.5 }}
+                                            >
+                                                <DescriptionOutlined
+                                                    sx={{ mr: 2, color: "text.secondary", fontSize: 20 }}
+                                                />
+                                                <ListItemText
+                                                    primary={note.title}
+                                                    secondary={dateTime(note.modified ?? note.created)}
+                                                    primaryTypographyProps={{ fontSize: 14, fontWeight: 600 }}
+                                                />
+                                                <ChevronRightRounded color="disabled" />
+                                            </ListItemButton>
+                                        ))}
+                                </List>
                             )}
                         </Stack>
                     )}
                 </Box>
             </Box>
+            {createOpen && <NewDocumentDialog onClose={() => setCreateOpen(false)} />}
         </Stack>
     );
 }

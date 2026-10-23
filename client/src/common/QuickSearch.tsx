@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
+import SearchRounded from "@mui/icons-material/SearchRounded";
 import {
     Button,
+    Box,
     Dialog,
     DialogContent,
     List,
@@ -53,8 +55,20 @@ export default function QuickSearch() {
         .slice(0, 15);
     return (
         <>
-            <Button size="small" color="inherit" onClick={() => setOpen(true)}>
-                Поиск · ⌘/Ctrl K
+            <Button
+                size="small"
+                color="inherit"
+                startIcon={<SearchRounded />}
+                aria-label="Поиск задач и документов"
+                onClick={() => setOpen(true)}
+            >
+                Поиск{" "}
+                <Box
+                    component="span"
+                    sx={{ display: { xs: "none", sm: "inline" }, color: "text.disabled", ml: 1.5, fontSize: 11 }}
+                >
+                    ⌘ / Ctrl K
+                </Box>
             </Button>
             <Dialog open={open} onClose={() => setOpen(false)}>
                 <DialogContent>

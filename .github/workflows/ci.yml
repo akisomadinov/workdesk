@@ -40,6 +40,7 @@ jobs:
           corepack enable
           corepack yarn install --immutable
           corepack yarn npm audit --recursive --severity high
+          corepack yarn test
       - name: Check API generation and build frontend
         run: |
           dotnet run --no-build -c Release --no-launch-profile --project src/Workdesk.Server > /tmp/workdesk-ci.log 2>&1 &

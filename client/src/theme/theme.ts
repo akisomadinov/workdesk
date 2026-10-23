@@ -15,7 +15,7 @@ const theme = (mode: "light" | "dark") =>
             },
             text: {
                 primary: mode === "dark" ? "#eceef4" : "#202737",
-                secondary: mode === "dark" ? "#a5adbd" : "#71798a"
+                secondary: mode === "dark" ? "#a5adbd" : "#657084"
             },
             divider: mode === "dark" ? "#343945" : "#e8ebf0",
             success: { main: mode === "dark" ? "#72c9a8" : "#278363", light: mode === "dark" ? "#19352c" : "#edf8f3" },
@@ -30,7 +30,7 @@ const theme = (mode: "light" | "dark") =>
             button: { textTransform: "none", fontWeight: 600 },
             body2: { fontSize: "0.84rem" }
         },
-        shape: { borderRadius: 12 },
+        shape: { borderRadius: 8 },
         components: {
             MuiButton: {
                 defaultProps: { disableElevation: true },
