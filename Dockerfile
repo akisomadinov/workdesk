@@ -1,4 +1,4 @@
-FROM node:24-bookworm-slim AS frontend
+FROM node:25-bookworm-slim AS frontend
 WORKDIR /client
 RUN corepack enable
 COPY client/package.json client/yarn.lock client/.yarnrc.yml ./
