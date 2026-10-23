@@ -1,324 +1,255 @@
 import { useState } from "react";
 import {
     Alert,
-    Avatar,
     Box,
     Button,
-    Dialog,
-    DialogActions,
-    DialogContent,
-    DialogTitle,
     Divider,
-    MenuItem,
+    List,
+    ListItemButton,
+    ListItemIcon,
+    ListItemText,
+    Snackbar,
     Stack,
-    TextField,
     Typography
 } from "@mui/material";
 import AddRounded from "@mui/icons-material/AddRounded";
+import ArrowBackRounded from "@mui/icons-material/ArrowBackRounded";
+import ArrowForwardRounded from "@mui/icons-material/ArrowForwardRounded";
+import ChevronRightRounded from "@mui/icons-material/ChevronRightRounded";
 import PersonAddOutlined from "@mui/icons-material/PersonAddOutlined";
 import GroupsOutlined from "@mui/icons-material/GroupsOutlined";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
-import { useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import {
     useAuthSessionQuery,
     useTeamGetQuery,
-    useTeamCreateMutation,
-    useTeamRoleMutation,
     useTeamPendingQuery,
     useTeamAcceptMutation
 } from "@/api/autogen/workdesk";
 import AccountPage from "./AccountPage";
 import InviteDialog from "./team/InviteDialog";
-import { message } from "@/common/models";
+import CreateTeamDialog from "./team/CreateTeamDialog";
+import TeamMembers from "./team/TeamMembers";
+import { roleLabel } from "./team/roles";
+import { dateTime, message } from "@/common/models";
 import { useWorkspaceStore } from "@/stores/useWorkspaceStore";
-const schema = z.object({ name: z.string().trim().min(1, "Укажи название команды").max(200, "До 200 символов") });
-const roles: Record<string, string> = { owner: "Владелец", editor: "Редактор", reader: "Читатель" };
+import useSwitchWorkspace from "@/hooks/useSwitchWorkspace";
 export default function TeamPage() {
-    const { data: pending = [] } = useTeamPendingQuery(undefined, { pollingInterval: 15000 });
-    const [accept, { isLoading: accepting }] = useTeamAcceptMutation();
+    const { data: pending = [], error: pendingError } = useTeamPendingQuery(undefined, { pollingInterval: 15000 });
     const { data: session } = useAuthSessionQuery();
-    const { data: spaces = [], isLoading, error: loadError } = useTeamGetQuery(undefined, { pollingInterval: 15000 });
-    const [create] = useTeamCreateMutation();
-    const [changeRole, { isLoading: changingRole }] = useTeamRoleMutation();
-    const form = useForm<z.infer<typeof schema>>({
-        resolver: zodResolver(schema),
-        mode: "onChange",
-        defaultValues: { name: "" }
-    });
-    const { scope, setScope } = useWorkspaceStore();
-    const [selectedId, setSelectedId] = useState(scope);
-    const space = spaces.find((space) => space.id === selectedId) ?? spaces[0];
+    const {
+        data: spaces = [],
+        isLoading,
+        error: loadError,
+        refetch
+    } = useTeamGetQuery(undefined, { pollingInterval: 15000 });
+    const [accept, { isLoading: accepting }] = useTeamAcceptMutation();
+    const { scope } = useWorkspaceStore();
+    const switchWorkspace = useSwitchWorkspace();
+    const space = spaces.find((item) => item.id === scope);
     const [createOpen, setCreateOpen] = useState(false);
-    const [inviteOpen, setInviteOpen] = useState(false);
+    const [inviteId, setInviteId] = useState<string | null>(null);
+    const [setupOpen, setSetupOpen] = useState(false);
     const [error, setError] = useState("");
-    const [remove, setRemove] = useState<{ id: string; name: string } | null>(null);
-    const navigate = useNavigate();
-    async function updateRole(user: string, role: string) {
-        try {
-            await changeRole({ id: space?.id ?? "", user, roleRequest: { role } }).unwrap();
-            setError("");
-            setRemove(null);
-        } catch (failure) {
-            setError(message(failure));
-        }
-    }
-    if (session?.setupRequired) return <AccountPage mode="setup" />;
+    const [notice, setNotice] = useState("");
+    if (session?.setupRequired && setupOpen)
+        return (
+            <Box>
+                <Button color="inherit" startIcon={<ArrowBackRounded />} onClick={() => setSetupOpen(false)}>
+                    Назад
+                </Button>
+                <AccountPage mode="setup" />
+            </Box>
+        );
     return (
-        <Stack gap={3} sx={{ maxWidth: 1000 }}>
-            <Stack direction="row" justifyContent="space-between" alignItems="center" gap={1}>
-                <Box>
-                    <Typography variant="h4">Команда</Typography>
-                    <Typography color="text.secondary" variant="body2" sx={{ mt: 1 }}>
-                        Участники, общие задачи и документы.
-                    </Typography>
-                </Box>
-                {!!spaces.length && (
-                    <Button color="inherit" startIcon={<AddRounded />} onClick={() => setCreateOpen(true)}>
-                        Новая команда
-                    </Button>
-                )}
-            </Stack>
-            {(error || loadError) && (
-                <Alert severity="error" onClose={() => setError("")}>
-                    {error || message(loadError)}
-                </Alert>
+        <Stack gap={3} sx={{ maxWidth: 880 }}>
+            {space && (
+                <Button
+                    color="inherit"
+                    startIcon={<ArrowBackRounded />}
+                    onClick={() => switchWorkspace("mine")}
+                    sx={{ alignSelf: "start", px: 0 }}
+                >
+                    Все команды
+                </Button>
             )}
-            {pending.map((invitation) => (
-                <Alert
-                    key={invitation.id}
-                    severity="info"
-                    action={
-                        <Button
-                            disabled={accepting}
-                            onClick={async () => {
-                                try {
-                                    await accept({ id: invitation.id ?? "" }).unwrap();
-                                } catch (failure) {
-                                    setError(message(failure));
-                                }
-                            }}
-                        >
-                            Принять
-                        </Button>
-                    }
-                >
-                    Тебя пригласили в «{invitation.workspace}» · {roles[invitation.role ?? "reader"]}
-                </Alert>
-            ))}
-            {isLoading ? (
-                <Typography role="status">Загружаем команды…</Typography>
-            ) : !space ? (
-                <Stack
-                    alignItems="center"
-                    gap={2}
-                    sx={{ py: 8, textAlign: "center", maxWidth: 460, alignSelf: "center" }}
-                >
-                    <GroupsOutlined sx={{ fontSize: 44, color: "text.disabled" }} />
-                    <Typography variant="h5">Работать вместе проще</Typography>
-                    <Typography variant="body2" color="text.secondary">
-                        Создай команду и пригласи коллег. У вас появится общая доска и место для документации. Личные
-                        материалы останутся у тебя.
+            <Stack
+                direction={{ xs: "column", sm: "row" }}
+                alignItems={{ xs: "start", sm: "center" }}
+                justifyContent="space-between"
+                gap={2}
+            >
+                <Box sx={{ minWidth: 0 }}>
+                    <Typography variant="h4" component="h1" sx={{ overflowWrap: "anywhere" }}>
+                        {space?.name ?? "Команда"}
                     </Typography>
-                    <Button variant="contained" startIcon={<AddRounded />} onClick={() => setCreateOpen(true)}>
+                    {space ? (
+                        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75 }}>
+                            Твои права: {roleLabel(space.role)}
+                        </Typography>
+                    ) : (
+                        !session?.setupRequired && (
+                            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75 }}>
+                                Выбери команду для общей доски и документов.
+                            </Typography>
+                        )
+                    )}
+                </Box>
+                {space?.role === "owner" ? (
+                    <Button
+                        variant="contained"
+                        startIcon={<PersonAddOutlined />}
+                        sx={{ flexShrink: 0 }}
+                        onClick={() => setInviteId(space.id ?? null)}
+                    >
+                        Пригласить
+                    </Button>
+                ) : !space && !session?.setupRequired && !!spaces.length ? (
+                    <Button
+                        variant="contained"
+                        startIcon={<AddRounded />}
+                        sx={{ flexShrink: 0 }}
+                        onClick={() => setCreateOpen(true)}
+                    >
                         Создать команду
                     </Button>
-                </Stack>
-            ) : (
-                <>
-                    <Stack
-                        direction={{ xs: "column", sm: "row" }}
-                        gap={2}
-                        alignItems={{ sm: "center" }}
-                        justifyContent="space-between"
-                    >
-                        {spaces.length > 1 ? (
-                            <TextField
-                                select
-                                label="Команда"
-                                value={space.id}
-                                onChange={(event) => setSelectedId(event.target.value)}
-                                sx={{ maxWidth: 360 }}
-                            >
-                                {spaces.map((item) => (
-                                    <MenuItem key={item.id} value={item.id}>
-                                        {item.name}
-                                    </MenuItem>
-                                ))}
-                            </TextField>
-                        ) : (
-                            <Box>
-                                <Typography variant="h5">{space.name}</Typography>
+                ) : null}
+            </Stack>
+            {(error || loadError || pendingError) && (
+                <Alert severity="error" onClose={() => setError("")}>
+                    {error || message(loadError || pendingError)}
+                </Alert>
+            )}
+            {!!pending.length && (
+                <Box>
+                    <Typography variant="body2" fontWeight={650}>
+                        Приглашения · {pending.length}
+                    </Typography>
+                    {pending.map((invitation) => (
+                        <Stack
+                            key={invitation.id}
+                            direction={{ xs: "column", sm: "row" }}
+                            alignItems={{ xs: "start", sm: "center" }}
+                            gap={1.5}
+                            sx={{ py: 1.5, borderBottom: 1, borderColor: "divider" }}
+                        >
+                            <Box sx={{ flex: 1, minWidth: 0 }}>
+                                <Typography variant="body2" fontWeight={600} sx={{ overflowWrap: "anywhere" }}>
+                                    {invitation.workspace}
+                                </Typography>
                                 <Typography variant="caption" color="text.secondary">
-                                    {roles[space.role ?? "reader"]} · твой логин @{session?.login}
+                                    {roleLabel(invitation.role)} · до {dateTime(invitation.expires)}
                                 </Typography>
                             </Box>
-                        )}
-                        {space.role === "owner" && (
                             <Button
-                                variant="contained"
-                                startIcon={<PersonAddOutlined />}
-                                onClick={() => setInviteOpen(true)}
+                                variant="outlined"
+                                disabled={accepting}
+                                onClick={async () => {
+                                    setError("");
+                                    try {
+                                        const known = new Set(spaces.map((item) => item.id));
+                                        await accept({ id: invitation.id ?? "" }).unwrap();
+                                        const result = await refetch().unwrap();
+                                        const added = result.filter((item) => item.id && !known.has(item.id));
+                                        if (added.length === 1 && added[0].id) switchWorkspace(added[0].id);
+                                        setNotice("Приглашение принято");
+                                    } catch (failure) {
+                                        setError(message(failure));
+                                    }
+                                }}
                             >
-                                Пригласить
+                                Присоединиться
                             </Button>
-                        )}
-                    </Stack>
-                    <Stack direction="row" gap={1} flexWrap="wrap">
-                        <Button
-                            variant="outlined"
-                            color="inherit"
-                            onClick={() => {
-                                setScope(space.id ?? "mine");
-                                navigate("/board");
-                            }}
-                        >
-                            Доска команды
-                        </Button>
-                        <Button
-                            variant="outlined"
-                            color="inherit"
-                            onClick={() => {
-                                setScope(space.id ?? "mine");
-                                navigate("/notes");
-                            }}
-                        >
-                            Документы команды
-                        </Button>
-                    </Stack>
-                    <Box sx={{ border: 1, borderColor: "divider", borderRadius: 2, overflow: "hidden" }}>
-                        <Stack
-                            direction="row"
-                            justifyContent="space-between"
-                            sx={{ px: 2.5, py: 1.5, bgcolor: "background.default" }}
-                        >
-                            <Typography variant="body2" fontWeight={650}>
-                                Участники · {space.members?.length ?? 0}
-                            </Typography>
-                            <Typography variant="caption" color="text.secondary">
-                                Доступ
-                            </Typography>
                         </Stack>
-                        {(space.members ?? []).map((person) => (
-                            <Box key={person.id}>
-                                <Divider />
-                                <Stack direction="row" gap={1.5} alignItems="center" sx={{ p: { xs: 1.5, sm: 2.5 } }}>
-                                    <Avatar
-                                        sx={{
-                                            width: 32,
-                                            height: 32,
-                                            fontSize: 13,
-                                            bgcolor: "action.selected",
-                                            color: "text.secondary"
-                                        }}
-                                    >
-                                        {person.name?.slice(0, 1)}
-                                    </Avatar>
-                                    <Box sx={{ flex: 1, minWidth: 0 }}>
-                                        <Typography variant="body2" fontWeight={600} sx={{ overflowWrap: "anywhere" }}>
-                                            {person.name}
-                                            {person.id === session?.userId ? " (ты)" : ""}
-                                        </Typography>
-                                    </Box>
-                                    {space.role === "owner" && person.role !== "owner" ? (
-                                        <TextField
-                                            select
-                                            value={person.role}
-                                            disabled={changingRole}
-                                            slotProps={{ htmlInput: { "aria-label": `Доступ: ${person.name}` } }}
-                                            sx={{ width: 150, flexShrink: 0 }}
-                                            onChange={(event) => {
-                                                if (event.target.value === "removed")
-                                                    setRemove({ id: person.id ?? "", name: person.name ?? "участник" });
-                                                else void updateRole(person.id ?? "", event.target.value);
-                                            }}
-                                        >
-                                            <MenuItem value="reader">Читатель</MenuItem>
-                                            <MenuItem value="editor">Редактор</MenuItem>
-                                            <Divider />
-                                            <MenuItem value="removed">Удалить из команды</MenuItem>
-                                        </TextField>
-                                    ) : (
-                                        <Typography variant="caption" color="text.secondary">
-                                            {roles[person.role ?? "reader"]}
-                                        </Typography>
-                                    )}
-                                </Stack>
-                            </Box>
-                        ))}
-                    </Box>
-                    <Typography variant="caption" color="text.secondary">
-                        Читатель просматривает материалы, редактор может их менять. Только владелец управляет
-                        участниками.
-                    </Typography>
-                </>
+                    ))}
+                </Box>
             )}
-            <Dialog open={createOpen} onClose={form.formState.isSubmitting ? undefined : () => setCreateOpen(false)}>
-                <form
-                    onSubmit={form.handleSubmit(async ({ name }) => {
-                        try {
-                            const created = await create({ createWorkspaceRequest: { name } }).unwrap();
-                            setSelectedId(created.id ?? "");
-                            setCreateOpen(false);
-                            form.reset();
-                            setError("");
-                        } catch (failure) {
-                            form.setError("root", { message: message(failure) });
-                        }
-                    })}
-                >
-                    <DialogTitle>Новая команда</DialogTitle>
-                    <DialogContent>
-                        <Stack gap={2} sx={{ pt: 1 }}>
-                            <TextField
-                                autoFocus
-                                label="Название команды"
-                                placeholder="Например, Разработка"
-                                {...form.register("name")}
-                                error={!!form.formState.errors.name}
-                                helperText={form.formState.errors.name?.message}
-                            />
-                            <Typography variant="body2" color="text.secondary">
-                                После создания сможешь пригласить коллег и выбрать, какие материалы сделать общими.
-                            </Typography>
-                            {form.formState.errors.root && (
-                                <Alert severity="error">{form.formState.errors.root.message}</Alert>
-                            )}
-                        </Stack>
-                    </DialogContent>
-                    <DialogActions>
-                        <Button onClick={() => setCreateOpen(false)}>Отмена</Button>
-                        <Button type="submit" variant="contained" disabled={form.formState.isSubmitting}>
+            {session?.setupRequired ? (
+                <Stack gap={2} sx={{ maxWidth: 480, py: 3 }}>
+                    <GroupsOutlined sx={{ fontSize: 36, color: "text.disabled" }} />
+                    <Typography variant="h5" component="h2">
+                        Сначала создай аккаунт
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                        С аккаунтом можно создавать команды и приглашать коллег. Личные задачи и документы сохранятся.
+                    </Typography>
+                    <Button variant="contained" onClick={() => setSetupOpen(true)} sx={{ alignSelf: "start" }}>
+                        Создать аккаунт
+                    </Button>
+                </Stack>
+            ) : isLoading ? (
+                <Typography role="status">Загружаем команды…</Typography>
+            ) : space ? (
+                <>
+                    <Button
+                        component={Link}
+                        to="/board"
+                        endIcon={<ArrowForwardRounded />}
+                        color="inherit"
+                        sx={{ alignSelf: "start", px: 0 }}
+                    >
+                        Открыть доску команды
+                    </Button>
+                    <Divider />
+                    <TeamMembers key={space.id} space={space} userId={session?.userId} />
+                </>
+            ) : spaces.length ? (
+                <List disablePadding aria-label="Мои команды">
+                    {spaces.map((item) => (
+                        <Box component="li" key={item.id}>
+                            <ListItemButton
+                                onClick={() => switchWorkspace(item.id ?? "mine")}
+                                sx={{ borderBottom: 1, borderColor: "divider", px: 0, py: 2, gap: 1.5 }}
+                            >
+                                <ListItemIcon sx={{ minWidth: 32 }}>
+                                    <GroupsOutlined />
+                                </ListItemIcon>
+                                <ListItemText
+                                    primary={item.name}
+                                    secondary={`${roleLabel(item.role)} · Участников: ${item.members?.length ?? 0}`}
+                                    primaryTypographyProps={{
+                                        fontWeight: 600,
+                                        fontSize: 14,
+                                        sx: { overflowWrap: "anywhere" }
+                                    }}
+                                    secondaryTypographyProps={{ fontSize: 12, mt: 0.5 }}
+                                />
+                                <ChevronRightRounded fontSize="small" color="action" />
+                            </ListItemButton>
+                        </Box>
+                    ))}
+                </List>
+            ) : (
+                !loadError && (
+                    <Stack gap={2} sx={{ maxWidth: 480, py: 3 }}>
+                        <GroupsOutlined sx={{ fontSize: 36, color: "text.disabled" }} />
+                        <Typography variant="h5" component="h2">
+                            У тебя пока нет команд
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                            Создай команду или прими приглашение коллеги. Общие материалы будут в пространстве команды,
+                            личные останутся у тебя.
+                        </Typography>
+                        <Button
+                            variant="contained"
+                            startIcon={<AddRounded />}
+                            onClick={() => setCreateOpen(true)}
+                            sx={{ alignSelf: "start" }}
+                        >
                             Создать команду
                         </Button>
-                    </DialogActions>
-                </form>
-            </Dialog>
-            {inviteOpen && space?.id && (
+                    </Stack>
+                )
+            )}
+            {createOpen && <CreateTeamDialog onClose={() => setCreateOpen(false)} />}
+            {inviteId === space?.id && space?.id && (
                 <InviteDialog
+                    key={space.id}
                     workspaceId={space.id}
                     workspaceName={space.name ?? "Команда"}
-                    onClose={() => setInviteOpen(false)}
+                    onClose={() => setInviteId(null)}
                 />
             )}
-            <Dialog open={!!remove} onClose={() => setRemove(null)}>
-                <DialogTitle>Удалить участника?</DialogTitle>
-                <DialogContent>
-                    {remove?.name} потеряет доступ к задачам и документам команды «{space?.name}». Его личные материалы
-                    сохранятся.
-                </DialogContent>
-                <DialogActions>
-                    <Button onClick={() => setRemove(null)}>Отмена</Button>
-                    <Button
-                        color="error"
-                        disabled={changingRole}
-                        onClick={() => remove && void updateRole(remove.id, "removed")}
-                    >
-                        Удалить из команды
-                    </Button>
-                </DialogActions>
-            </Dialog>
+            <Snackbar open={!!notice} message={notice} autoHideDuration={4000} onClose={() => setNotice("")} />
         </Stack>
     );
 }

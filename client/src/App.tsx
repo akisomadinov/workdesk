@@ -1,4 +1,4 @@
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import {
     Alert,
     Avatar,
@@ -11,9 +11,7 @@ import {
     ListItemButton,
     ListItemIcon,
     ListItemText,
-    MenuItem,
     Stack,
-    TextField,
     Tooltip,
     Typography
 } from "@mui/material";
@@ -28,14 +26,19 @@ import AssessmentOutlined from "@mui/icons-material/AssessmentOutlined";
 import SettingsOutlined from "@mui/icons-material/SettingsOutlined";
 import { Link, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import useGetPages, { NotesPage } from "@/hooks/useGetPages";
-import { useAuthSessionQuery, useTeamGetQuery, useNotificationsGetQuery } from "@/api/autogen/workdesk";
+import { useAuthSessionQuery, useNotificationsGetQuery } from "@/api/autogen/workdesk";
 import { useWorkspaceStore } from "@/stores/useWorkspaceStore";
 import AccountPage from "@/pages/AccountPage";
 import QuickSearch from "@/common/QuickSearch";
+import WorkspaceSwitcher from "@/common/WorkspaceSwitcher";
 
 export default function App() {
     const location = useLocation();
     const { data: session, isLoading, error } = useAuthSessionQuery(undefined, { pollingInterval: 60000 });
+    const { userId, bindUser } = useWorkspaceStore();
+    useEffect(() => {
+        if (session?.userId) bindUser(session.userId);
+    }, [session?.userId, bindUser]);
     if (location.pathname === "/join") return <AccountPage mode="join" />;
     if (isLoading) return <Box sx={{ p: 5 }}>Открываем Workdesk…</Box>;
     if (error)
@@ -45,6 +48,7 @@ export default function App() {
             </Box>
         );
     if (session?.sharedMode && !session.authenticated) return <AccountPage mode="login" />;
+    if (session?.userId !== userId) return <Box sx={{ p: 5 }}>Открываем пространство…</Box>;
     return <WorkspaceLayout />;
 }
 
@@ -53,16 +57,8 @@ function WorkspaceLayout() {
     const location = useLocation();
     const [menuOpen, setMenuOpen] = useState(false);
     const { data: session } = useAuthSessionQuery();
-    const { data: spaces = [] } = useTeamGetQuery();
     const { data: notifications = [] } = useNotificationsGetQuery(undefined, { pollingInterval: 30000 });
     const unread = notifications.filter((item) => !item.read).length;
-    const { scope, setScope } = useWorkspaceStore();
-    const scopeName =
-        scope === "mine"
-            ? "Моя работа"
-            : scope === "all"
-              ? "Всё доступное"
-              : (spaces.find((space) => space.id === scope)?.name ?? "Моя работа");
     const navigation = [
         { path: "/", label: "Сегодня", icon: <WbSunnyOutlined /> },
         { path: "/board", label: "Задачи", icon: <ViewKanbanOutlined /> },
@@ -113,26 +109,16 @@ function WorkspaceLayout() {
                     workdesk
                 </Typography>
             </Stack>
-            <TextField
-                select
-                label="Рабочее пространство"
-                value={scope}
-                onChange={(event) => setScope(event.target.value)}
-                sx={{ mb: 2 }}
-            >
-                <MenuItem value="mine">Моя работа</MenuItem>
-                <MenuItem value="all">Всё доступное</MenuItem>
-                {spaces.map((space) => (
-                    <MenuItem key={space.id} value={space.id}>
-                        {space.name}
-                    </MenuItem>
-                ))}
-            </TextField>
+            <Box sx={{ mb: 2 }}>
+                <WorkspaceSwitcher onSelect={() => setMenuOpen(false)} />
+            </Box>
             <List component="nav" aria-label="Основная навигация">
                 {navigation.map(navItem)}
             </List>
             <Divider sx={{ my: 1.5 }} />
-            <List>{navItem({ path: "/reports", label: "Итоги по milestone", icon: <AssessmentOutlined /> })}</List>
+            <List component="nav" aria-label="Отчёты">
+                {navItem({ path: "/reports", label: "Итоги по milestone", icon: <AssessmentOutlined /> })}
+            </List>
             <Box sx={{ mt: "auto", pt: 4 }}>
                 <Divider sx={{ my: 1.5 }} />
                 <ListItemButton
@@ -202,14 +188,16 @@ function WorkspaceLayout() {
                         >
                             <MenuRounded />
                         </IconButton>
-                        <Typography variant="body2" noWrap color="text.secondary">
-                            {scopeName}
-                        </Typography>
+                        <WorkspaceSwitcher compact />
                     </Stack>
                     <Stack direction="row" gap={1} alignItems="center">
                         <QuickSearch />
                         <Tooltip title="Уведомления">
-                            <IconButton component={Link} to="/notifications" aria-label="Уведомления">
+                            <IconButton
+                                component={Link}
+                                to="/notifications"
+                                aria-label={`Уведомления: ${unread} непрочитанных`}
+                            >
                                 <Badge badgeContent={unread} max={99} color="primary">
                                     <NotificationsOutlined fontSize="small" />
                                 </Badge>

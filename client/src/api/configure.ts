@@ -6,6 +6,7 @@ workdeskApi.enhanceEndpoints({
         notesDelete: { invalidatesTags: ["Notes", "Tasks"] },
         notesRestore: { invalidatesTags: ["Notes", "Tasks"] },
         teamInvite: { invalidatesTags: ["Team", "Notifications"] },
+        teamAccept: { invalidatesTags: ["Team", "Notes", "Tasks", "Notifications"] },
         teamRole: { invalidatesTags: ["Team", "Notes", "Tasks"] }
     }
 });

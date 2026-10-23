@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import {
     Alert,
     Box,
@@ -7,9 +7,6 @@ import {
     DialogActions,
     DialogContent,
     DialogTitle,
-    FormControlLabel,
-    Radio,
-    RadioGroup,
     Stack,
     Tab,
     Tabs,
@@ -19,63 +16,87 @@ import {
 import ContentCopyRounded from "@mui/icons-material/ContentCopyRounded";
 import { Controller, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
 import { useTeamInviteMutation } from "@/api/autogen/workdesk";
 import { dateTime, message } from "@/common/models";
-const schema = z
-    .object({ mode: z.enum(["login", "link"]), login: z.string().trim(), role: z.enum(["reader", "editor"]) })
-    .refine((value) => value.mode !== "login" || value.login.length > 0, {
-        message: "Укажи логин пользователя",
-        path: ["login"]
-    });
-export default function InviteDialog({
-    workspaceId,
-    workspaceName,
-    onClose
-}: {
+import RoleOptions from "./RoleOptions";
+import { roleLabel } from "./roles";
+import { invitationSchema } from "./validation";
+import type { InvitationValues } from "./validation";
+interface Props {
     workspaceId: string;
     workspaceName: string;
     onClose: () => void;
-}) {
+}
+export default function InviteDialog({ workspaceId, workspaceName, onClose }: Props) {
+    const id = useId();
     const [invite] = useTeamInviteMutation();
     const [error, setError] = useState("");
     const [copied, setCopied] = useState(false);
-    const [result, setResult] = useState<{ url: string; expires: string } | null>(null);
-    const form = useForm<z.infer<typeof schema>>({
-        resolver: zodResolver(schema),
+    const [result, setResult] = useState<{ url: string; expires: string; login: string; role: string } | null>(null);
+    const form = useForm<InvitationValues>({
+        resolver: zodResolver(invitationSchema),
         mode: "onChange",
-        defaultValues: { mode: "login", login: "", role: "reader" }
+        defaultValues: { mode: "link", login: "", role: "reader" }
     });
     const values = useWatch({ control: form.control });
+    const busy = form.formState.isSubmitting;
     return (
-        <Dialog open onClose={form.formState.isSubmitting ? undefined : onClose}>
-            <form
-                onSubmit={form.handleSubmit(async (value) => {
-                    setError("");
-                    try {
-                        const invitation = await invite({
-                            id: workspaceId,
-                            inviteRequest: { role: value.role, login: value.mode === "login" ? value.login : undefined }
-                        }).unwrap();
-                        setResult({
-                            url: invitation.token ? `${location.origin}/join#${invitation.token}` : "",
-                            expires: invitation.expires ?? ""
-                        });
-                    } catch (failure) {
-                        setError(message(failure));
-                    }
-                })}
-            >
-                <DialogTitle>Пригласить в «{workspaceName}»</DialogTitle>
-                <DialogContent>
+        <Dialog
+            open
+            onClose={busy ? undefined : onClose}
+            aria-labelledby={`${id}-title`}
+            slotProps={{ paper: { sx: { mx: { xs: 2, sm: 4 }, width: "calc(100% - 32px)" } } }}
+        >
+            <DialogTitle id={`${id}-title`} sx={{ pb: 1 }}>
+                Пригласить участника
+                <Typography
+                    component="span"
+                    variant="body2"
+                    color="text.secondary"
+                    sx={{ display: "block", mt: 0.5, overflowWrap: "anywhere" }}
+                >
+                    {workspaceName}
+                </Typography>
+            </DialogTitle>
+            <DialogContent>
+                <form
+                    id={id}
+                    onSubmit={form.handleSubmit(async (value) => {
+                        if (result) return;
+                        setError("");
+                        try {
+                            const invitation = await invite({
+                                id: workspaceId,
+                                inviteRequest: {
+                                    role: value.role,
+                                    login: value.mode === "login" ? value.login : undefined
+                                }
+                            }).unwrap();
+                            setResult({
+                                url: invitation.token ? `${location.origin}/join#${invitation.token}` : "",
+                                expires: invitation.expires ?? "",
+                                login: value.login,
+                                role: invitation.role ?? value.role
+                            });
+                        } catch (failure) {
+                            setError(message(failure));
+                        }
+                    })}
+                >
                     {result ? (
                         <Stack gap={2} sx={{ pt: 1 }}>
-                            <Alert severity="success">
-                                {result.url
-                                    ? "Ссылка готова. Отправь её будущему участнику."
-                                    : "Приглашение отправлено. Пользователь увидит его в разделе «Команда»."}
-                            </Alert>
-                            {!!result.url && (
+                            <Box role="status">
+                                <Typography variant="h6">
+                                    {result.url ? "Ссылка готова" : `Приглашение для @${result.login} отправлено`}
+                                </Typography>
+                                <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                                    Права: {roleLabel(result.role)}.{" "}
+                                    {result.url
+                                        ? "Отправь ссылку будущему участнику."
+                                        : "Оно появится у пользователя в разделе «Команда»."}
+                                </Typography>
+                            </Box>
+                            {result.url && (
                                 <>
                                     <TextField
                                         label="Ссылка для приглашения"
@@ -84,109 +105,82 @@ export default function InviteDialog({
                                         onFocus={(event) => event.target.select()}
                                     />
                                     <Button
-                                        variant="outlined"
+                                        variant="contained"
                                         startIcon={<ContentCopyRounded />}
                                         onClick={async () => {
                                             try {
                                                 await navigator.clipboard.writeText(result.url);
                                                 setCopied(true);
+                                                setError("");
                                             } catch {
                                                 setError(
-                                                    "Не удалось скопировать автоматически. Выдели ссылку и скопируй её вручную."
+                                                    "Выдели ссылку и скопируй её вручную: браузер не разрешил копирование."
                                                 );
                                             }
                                         }}
                                     >
-                                        {copied ? "Ссылка скопирована" : "Скопировать ссылку"}
+                                        {copied ? "Скопировано" : "Копировать ссылку"}
                                     </Button>
-                                    <Typography variant="body2" color="text.secondary">
-                                        Ссылка на одного участника, действует до {dateTime(result.expires)}. После
-                                        регистрации человек сразу попадёт в команду.
+                                    <Typography variant="caption" color="text.secondary">
+                                        На одного человека, до {dateTime(result.expires)}. Можно войти или
+                                        зарегистрироваться.
                                     </Typography>
                                     {["127.0.0.1", "localhost", "[::1]"].includes(location.hostname) && (
                                         <Alert severity="info">
-                                            Этот адрес работает только на твоём компьютере. Для приглашения с другого
-                                            устройства открой Workdesk по адресу общего сервера и создай ссылку там.
+                                            Для другого устройства создай ссылку, открыв Workdesk по адресу общего
+                                            сервера. Текущий адрес доступен только на этом компьютере.
                                         </Alert>
                                     )}
                                 </>
                             )}
                         </Stack>
                     ) : (
-                        <Stack gap={2.5}>
+                        <Stack gap={2}>
                             <Tabs
                                 value={values.mode}
                                 onChange={(_, value: "login" | "link") => {
-                                    form.setValue("mode", value);
+                                    form.setValue("mode", value, { shouldValidate: true });
                                     setError("");
                                 }}
                                 variant="fullWidth"
                                 aria-label="Способ приглашения"
                             >
-                                <Tab value="login" label="По логину" />
-                                <Tab value="link" label="По ссылке" />
+                                <Tab value="link" label="По ссылке" disabled={busy} />
+                                <Tab value="login" label="По логину" disabled={busy} />
                             </Tabs>
                             {values.mode === "login" ? (
                                 <TextField
                                     autoFocus
                                     label="Логин в Workdesk"
-                                    placeholder="Например, alex"
+                                    placeholder="@alex"
                                     {...form.register("login")}
+                                    disabled={busy}
                                     error={!!form.formState.errors.login}
                                     helperText={
-                                        form.formState.errors.login?.message ??
-                                        "Для человека, у которого уже есть аккаунт на этом сервере."
+                                        form.formState.errors.login?.message ?? "Аккаунт должен быть на этом сервере."
                                     }
                                 />
                             ) : (
                                 <Typography variant="body2" color="text.secondary">
-                                    Подойдёт и для нового участника: он откроет ссылку, создаст аккаунт и присоединится
-                                    к команде.
+                                    Для нового или существующего аккаунта. Ссылка добавит человека в эту команду после
+                                    входа.
                                 </Typography>
                             )}
                             <Box>
                                 <Typography variant="body2" fontWeight={650} sx={{ mb: 1 }}>
-                                    Что сможет участник
+                                    Права в команде
                                 </Typography>
                                 <Controller
                                     name="role"
                                     control={form.control}
                                     render={({ field }) => (
-                                        <RadioGroup {...field} aria-label="Права участника">
-                                            <FormControlLabel
-                                                value="reader"
-                                                control={<Radio size="small" />}
-                                                label={
-                                                    <Box sx={{ py: 0.75 }}>
-                                                        <Typography variant="body2" fontWeight={600}>
-                                                            Просматривать
-                                                        </Typography>
-                                                        <Typography variant="caption" color="text.secondary">
-                                                            Читать задачи и документы команды
-                                                        </Typography>
-                                                    </Box>
-                                                }
-                                            />
-                                            <FormControlLabel
-                                                value="editor"
-                                                control={<Radio size="small" />}
-                                                label={
-                                                    <Box sx={{ py: 0.75 }}>
-                                                        <Typography variant="body2" fontWeight={600}>
-                                                            Редактировать
-                                                        </Typography>
-                                                        <Typography variant="caption" color="text.secondary">
-                                                            Создавать и изменять задачи и документы команды
-                                                        </Typography>
-                                                    </Box>
-                                                }
-                                            />
-                                        </RadioGroup>
+                                        <RoleOptions value={field.value} onChange={field.onChange} disabled={busy} />
                                     )}
                                 />
                             </Box>
                             <Typography variant="caption" color="text.secondary">
-                                Личные задачи и документы участнику недоступны.
+                                Личные материалы не видны участникам. Приглашать людей и менять права может только
+                                владелец.
                             </Typography>
                         </Stack>
                     )}
@@ -195,18 +189,36 @@ export default function InviteDialog({
                             {error}
                         </Alert>
                     )}
-                </DialogContent>
-                <DialogActions>
-                    <Button color="inherit" onClick={onClose}>
-                        {result ? "Готово" : "Отмена"}
+                </form>
+            </DialogContent>
+            <DialogActions sx={{ px: { xs: 2, sm: 3 }, pb: 2, flexWrap: "wrap" }}>
+                {result && (
+                    <Button
+                        color="inherit"
+                        onClick={() => {
+                            setResult(null);
+                            setCopied(false);
+                            setError("");
+                            form.setValue("login", "");
+                        }}
+                    >
+                        Ещё участник
                     </Button>
-                    {!result && (
-                        <Button variant="contained" type="submit" disabled={form.formState.isSubmitting}>
-                            {values.mode === "login" ? "Отправить приглашение" : "Создать ссылку"}
-                        </Button>
-                    )}
-                </DialogActions>
-            </form>
+                )}
+                <Button color="inherit" onClick={onClose} disabled={busy}>
+                    {result ? "Готово" : "Отмена"}
+                </Button>
+                {!result && (
+                    <Button
+                        form={id}
+                        variant="contained"
+                        type="submit"
+                        disabled={busy || (values.mode === "login" && !form.formState.isValid)}
+                    >
+                        {busy ? "Создаём…" : values.mode === "login" ? "Пригласить" : "Создать ссылку"}
+                    </Button>
+                )}
+            </DialogActions>
         </Dialog>
     );
 }
