@@ -1,0 +1,154 @@
+using System.Net;
+using Microsoft.Data.Sqlite;
+using Microsoft.EntityFrameworkCore;
+using Workdesk.Data;
+using Workdesk.Services;
+using Xunit;
+
+namespace Workdesk.Tests;
+
+public sealed class CollaborationTests : IDisposable
+{
+    private readonly SqliteConnection connection = new("Data Source=:memory:");
+    private readonly WorkdeskContext db;
+    private readonly IUnitOfWork unit;
+    private readonly Actor owner = new(LocalIdentity.OwnerId);
+    private const string Password = "only-for-tests-12345";
+    private readonly RuntimeOptions options = new();
+    public CollaborationTests()
+    {
+        connection.Open(); db = new(new DbContextOptionsBuilder<WorkdeskContext>().UseSqlite(connection).Options); db.Database.Migrate();
+        unit = new UnitOfWork(db, new TaskRepository(db), new ConnectionRepository(db));
+    }
+    private TeamService Team(Actor actor) => new(unit, actor, options);
+    private AccessPolicy Rights(Actor actor) => new(unit, actor);
+    private async Task<WorkspaceResponse> Space()
+    {
+        await Team(owner).Setup(new CredentialsRequest { Name = "Owner", Email = "owner@example.test", Login = "owner", Password = Password }, default);
+        return await Team(owner).Create("Shared docs", default);
+    }
+    private async Task<Actor> Join(WorkspaceResponse space, string role = "reader")
+    {
+        var invitation = await Team(owner).Invite(space.Id, role, default);
+        var account = await Team(owner).Accept(new AcceptInvitationRequest { Token = invitation.Token, Name = "Reader", Email = "reader@example.test", Login = "reader", Password = Password }, default);
+        return new(account.Id.Value);
+    }
+    [Fact]
+    public async Task PersonalDocumentsRemainPrivateAndReadersCannotWrite()
+    {
+        var space = await Space(); var reader = await Join(space);
+        var writer = new NoteService(unit, Rights(owner));
+        await writer.Save(new SaveNoteRequest { Title = "Private", Body = "private" }, default);
+        var shared = await writer.Save(new SaveNoteRequest { Title = "Shared", WorkspaceId = space.Id, Body = "first" }, default);
+        var service = new NoteService(unit, Rights(reader));
+        var only = Assert.Single(await service.GetAll(default)); Assert.Equal(shared.Id, only.Id); Assert.False(only.CanEdit);
+        var forbidden = await Assert.ThrowsAsync<AppException>(() => service.Save(new SaveNoteRequest { Id = shared.Id, Title = "Changed", Body = "attack", WorkspaceId = space.Id, Revision = shared.Revision }, default));
+        Assert.Equal(403, forbidden.Status);
+        await Team(owner).SetRole(space.Id, reader.Id, "editor", default);
+        var edited = await service.Save(new SaveNoteRequest { Id = shared.Id, Title = "Shared", Body = "edited", WorkspaceId = space.Id, Revision = shared.Revision }, default);
+        Assert.Equal("edited", edited.Body);
+        await Team(owner).SetRole(space.Id, reader.Id, "removed", default);
+        Assert.Empty(await service.GetAll(default));
+        await Assert.ThrowsAsync<AppException>(() => service.History(shared.Id, default));
+    }
+    [Fact]
+    public async Task ReaderCannotOverwriteOrMoveTasksUsingDirectApi()
+    {
+        var space = await Space(); var reader = await Join(space);
+        var task = await new TaskService(unit, Rights(owner)).Save(new SaveTaskRequest { Title = "Shared task", WorkspaceId = space.Id }, default);
+        var service = new TaskService(unit, Rights(reader));
+        Assert.False(Assert.Single(await service.GetAll(default)).CanEdit);
+        await Assert.ThrowsAsync<AppException>(() => service.Save(new SaveTaskRequest { Id = task.Id, Title = task.Title, Revision = task.Revision, WorkspaceId = null }, default));
+    }
+    [Fact]
+    public async Task InvitationsAreSingleUseAndLoginWorks()
+    {
+        var space = await Space(); var invitation = await Team(owner).Invite(space.Id, "editor", default);
+        var request = new AcceptInvitationRequest { Token = invitation.Token, Name = "Person", Email = "person@example.test", Login = "person", Password = Password };
+        await Team(owner).Accept(request, default);
+        await Assert.ThrowsAsync<AppException>(() => Team(owner).Accept(request, default));
+        var account = await Team(owner).Login(new CredentialsRequest { Login = "person", Password = Password }, default);
+        Assert.Equal("person", account.Login);
+    }
+    [Fact]
+    public async Task DirectInvitationRequiresTheTargetAccount()
+    {
+        var space = await Space(); var reader = await Join(space);
+        await Team(owner).SetRole(space.Id, reader.Id, "removed", default);
+        var direct = await Team(owner).Invite(space.Id, "editor", default, "reader"); Assert.Empty(direct.Token);
+        var invitation = Assert.Single(await Team(reader).Pending(default));
+        await Assert.ThrowsAsync<AppException>(() => Team(owner).AcceptDirect(invitation.Id, default));
+        await Team(reader).AcceptDirect(invitation.Id, default);
+        Assert.Equal("editor", Assert.Single(await Team(reader).List(default)).Role);
+    }
+    [Fact]
+    public async Task LinkInvitationRestoresRevokedMembership()
+    {
+        var space = await Space(); var reader = await Join(space);
+        await Team(owner).SetRole(space.Id, reader.Id, "removed", default);
+        var invitation = await Team(owner).Invite(space.Id, "editor", default);
+        await Team(owner).Accept(new AcceptInvitationRequest { Token = invitation.Token, Email = "reader@example.test", Password = Password }, default);
+        Assert.Equal("editor", Assert.Single(await Team(reader).List(default)).Role);
+    }
+    [Fact]
+    public async Task MarkdownExportLinksPointToFilesAndPreserveCode()
+    {
+        var service = new NoteService(unit, Rights(owner));
+        var target = await service.Save(new SaveNoteRequest { Title = "Target", Body = "text" }, default);
+        await service.Save(new SaveNoteRequest { Title = "Source", Body = $"[[note:{target.Id}|Link]]\n`[[note:{target.Id}]]`" }, default);
+        using var stream = new MemoryStream(await service.Export(default));
+        using var zip = new System.IO.Compression.ZipArchive(stream);
+        using var reader = new StreamReader(zip.Entries.Single(x => x.Name.StartsWith("Source-")).Open());
+        var body = await reader.ReadToEndAsync();
+        Assert.Contains($"[[personal/Target-{target.Id.ToString()[..8]}|Link]]", body);
+        Assert.Contains($"`[[note:{target.Id}]]`", body);
+    }
+    [Fact]
+    public async Task NoteHistoryAndCycleChecksPreserveContent()
+    {
+        var service = new NoteService(unit, Rights(owner));
+        var first = await service.Save(new SaveNoteRequest { Title = "Parent", Body = "first" }, default);
+        var child = await service.Save(new SaveNoteRequest { Title = "Child", Body = "child", ParentId = first.Id }, default);
+        await Assert.ThrowsAsync<AppException>(() => service.Save(new SaveNoteRequest { Id = first.Id, Title = "Parent", Body = "bad", Revision = first.Revision, ParentId = child.Id }, default));
+        await service.Save(new SaveNoteRequest { Id = first.Id, Title = "Parent", Body = "second", Revision = first.Revision }, default);
+        Assert.Equal("first", Assert.Single(await service.History(first.Id, default)).Body);
+    }
+    [Fact]
+    public async Task NotificationDeduplicationAndAmbiguousDeliveryDoNotResend()
+    {
+        var secrets = new Secrets(); var handler = new ThrowingHandler();
+        var service = new NotificationService(unit, Rights(owner), secrets, new Factory(handler));
+        await service.Configure(new SaveTelegramRequest { ChatId = "12345", Token = "123456:" + new string('A', 30), Enabled = true }, default);
+        await service.Record(owner.Id, "unique", "Task", "https://example.test", "task", default);
+        await service.Record(owner.Id, "unique", "Task", "https://example.test", "task", default);
+        await unit.Commit(default);
+        await service.Deliver(default); await service.Deliver(default);
+        Assert.Equal(1, handler.Calls);
+        Assert.Equal("uncertain", Assert.Single(await service.List(default)).Delivery);
+    }
+    [RedisFact]
+    public async Task RedisProducerDeduplicatesAndConsumerAcknowledges()
+    {
+        using var queue = new RedisDeliveryQueue(new QueueOptions { Address = Environment.GetEnvironmentVariable("WORKDESK_TEST_REDIS"), PasswordFile = Environment.GetEnvironmentVariable("WORKDESK_TEST_REDIS_PASSWORD_FILE"), Prefix = "workdesk:test:" + Guid.NewGuid().ToString("N") });
+        var id = Guid.NewGuid(); await queue.Publish(id); await queue.Publish(id);
+        var entry = Assert.Single(await queue.Read()); Assert.Equal(id, entry.NotificationId);
+        await queue.Ack(entry); Assert.Empty(await queue.Read());
+    }
+    public void Dispose() { db.Dispose(); connection.Dispose(); }
+    private sealed class Actor(Guid id) : ICurrentActor { public Guid Id => id; public bool IsSystem => false; }
+    private sealed class Secrets : ISecretStore
+    {
+        private readonly Dictionary<Guid, string> values = [];
+        public bool Has(Guid id) => values.ContainsKey(id); public string? Get(Guid id) => values.GetValueOrDefault(id); public void Set(Guid id, string token) => values[id] = token;
+    }
+    private sealed class ThrowingHandler : HttpMessageHandler
+    {
+        public int Calls { get; private set; }
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) { Calls++; throw new HttpRequestException("Simulated uncertain transport result"); }
+    }
+    private sealed class Factory(HttpMessageHandler handler) : IHttpClientFactory { public HttpClient CreateClient(string name) => new(handler, false); }
+}
+public sealed class RedisFactAttribute : FactAttribute
+{
+    public RedisFactAttribute() { if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("WORKDESK_TEST_REDIS"))) Skip = "Configure WORKDESK_TEST_REDIS to run the Redis integration test."; }
+}

@@ -1,0 +1,50 @@
+services:
+  app:
+    profiles: ["app"]
+    build: .
+    image: workdesk:local
+    ports: ["127.0.0.1:5284:8080"]
+    environment:
+      Workdesk__Redis: redis:6379
+      WORKDESK_REDIS_PASSWORD_FILE: /run/secrets/redis-password
+      WORKDESK_MASTER_KEY_FILE: /run/secrets/master-key
+      Workdesk__SharedMode: "${WORKDESK_SHARED_MODE:-false}"
+      AllowedHosts: "${WORKDESK_ALLOWED_HOSTS:-localhost;127.0.0.1}"
+      Workdesk__AllowedSourceHosts: "${WORKDESK_SOURCE_HOSTS:-api.github.com,gitlab.com}"
+      Workdesk__TrustedProxies: "${WORKDESK_TRUSTED_PROXIES:-}"
+    volumes:
+      - workdesk-data:/data
+      - ./.secrets/redis-password:/run/secrets/redis-password:ro
+      - ./.secrets/master-key:/run/secrets/master-key:ro
+    read_only: true
+    tmpfs: ["/tmp"]
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+  redis:
+    image: redis:8.2-alpine
+    user: "999:999"
+    command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
+    ports: ["127.0.0.1:6389:6379"]
+    volumes:
+      - redis-data:/data
+      - ./deploy/redis.conf:/usr/local/etc/redis/redis.conf:ro
+      - ./.secrets/users.acl:/run/secrets/users.acl:ro
+      - ./.secrets/redis-password:/run/secrets/redis-password:ro
+    read_only: true
+    tmpfs: ["/tmp"]
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    restart: unless-stopped
+    mem_limit: 256m
+    healthcheck:
+      test: ["CMD-SHELL", "REDISCLI_AUTH=$$(cat /run/secrets/redis-password) redis-cli --user workdesk ping | grep -q PONG"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+volumes:
+  redis-data:
+  workdesk-data:

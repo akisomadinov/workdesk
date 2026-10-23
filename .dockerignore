@@ -1,0 +1,12 @@
+**/bin
+**/obj
+**/node_modules
+**/wwwroot
+**/tsconfig.tsbuildinfo
+.git
+.secrets
+.env*
+data
+artifacts
+.tools
+.yarn

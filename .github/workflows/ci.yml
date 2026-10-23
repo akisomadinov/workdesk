@@ -1,0 +1,62 @@
+name: Checks
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_call:
+permissions:
+  contents: read
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      redis:
+        image: redis:8.2-alpine
+        ports: ["6379:6379"]
+        options: --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      WORKDESK_TEST_REDIS: 127.0.0.1:6379
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          dotnet-version: 10.0.x
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24
+      - name: Restore and test backend
+        run: |
+          dotnet build --configuration Release
+          dotnet test --configuration Release --no-build
+      - name: Exercise shared server access controls
+        run: python3 scripts/smoke-shared.py
+      - name: Frontend dependencies and vulnerability audit
+        working-directory: client
+        run: |
+          corepack enable
+          corepack yarn install --immutable
+          corepack yarn npm audit --recursive --severity high
+      - name: Check API generation and build frontend
+        run: |
+          dotnet run --no-build -c Release --no-launch-profile --project src/Workdesk.Server > /tmp/workdesk-ci.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" || true' EXIT
+          for attempt in $(seq 1 40); do
+            if curl -fsS http://127.0.0.1:5284/api/health; then break; fi
+            sleep 1
+          done
+          cd client
+          corepack yarn generate-api
+          git diff --exit-code -- src/api/autogen/
+          corepack yarn build
+      - name: Scan committed history for secrets
+        run: >-
+          docker run --rm -v "$PWD:/repo:ro"
+          -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0=/repo
+          ghcr.io/gitleaks/gitleaks:v8.30.1 git /repo --redact --no-banner
+      - name: Build container
+        run: docker build -t workdesk:ci .

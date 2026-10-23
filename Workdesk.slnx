@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Workdesk.Data/Workdesk.Data.csproj" />
+    <Project Path="src/Workdesk.Server/Workdesk.Server.csproj" />
+    <Project Path="src/Workdesk.Services/Workdesk.Services.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Workdesk.Tests/Workdesk.Tests.csproj" />
+  </Folder>
+</Solution>

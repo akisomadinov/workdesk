@@ -1,0 +1,9 @@
+* text=auto eol=lf
+*.cs text eol=crlf
+*.ts text eol=crlf
+*.tsx text eol=crlf
+*.json text eol=crlf
+*.sh text eol=lf
+*.py text eol=lf
+*.png binary
+*.jpg binary
