@@ -103,6 +103,7 @@ public sealed class NotificationService(IUnitOfWork unit, IAccessPolicy access, 
                 else item.Failed();
             }
             catch (OperationCanceledException) when (!ct.IsCancellationRequested) { item.Uncertain(); }
+            catch (TelegramUnavailableException) { item.Failed(); }
             catch (HttpRequestException) { item.Uncertain(); }
             catch (JsonException) { item.Uncertain(); }
             catch (AppException) { item.Failed(); }

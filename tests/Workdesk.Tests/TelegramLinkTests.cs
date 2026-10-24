@@ -61,6 +61,19 @@ public sealed class TelegramLinkTests : IDisposable
         Assert.True((await service.State(default)).Connected);
     }
     [Fact]
+    public async Task KnownProxyOutageKeepsUnsentNotificationForRetry()
+    {
+        var owner = Guid.NewGuid();
+        var settings = new TelegramSettings(owner); settings.Link("111"); unit.Telegram.Add(settings);
+        await unit.Commit(default);
+        var notifications = new NotificationService(unit, Rights(owner), new NoSecrets(), new OfflineFactory(), sharedBot: bot);
+        await notifications.Record(owner, "pending", "Fixture", "https://example.test/1", "comment", default);
+        await unit.Commit(default); await notifications.Deliver(default);
+        var item = Assert.Single(await unit.Notifications.GetAll(default));
+        Assert.Equal("pending", item.Delivery); Assert.Equal(1, item.Attempts);
+        Assert.True(item.RetryAt > DateTime.UtcNow);
+    }
+    [Fact]
     public async Task DisconnectCancelsOnlyOwnQueueAndSharedChatCannotBeReplacedManually()
     {
         var first = Guid.NewGuid(); var second = Guid.NewGuid();
@@ -97,6 +110,11 @@ public sealed class TelegramLinkTests : IDisposable
         public void Set(Guid id, string value) => throw new InvalidOperationException();
     }
     private sealed class Factory(Handler handler) : IHttpClientFactory { public HttpClient CreateClient(string name) => new(handler, false); }
+    private sealed class OfflineFactory : IHttpClientFactory { public HttpClient CreateClient(string name) => new(new OfflineHandler()); }
+    private sealed class OfflineHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct) => throw new TelegramUnavailableException();
+    }
     private sealed class Handler : HttpMessageHandler
     {
         public List<string> Delivered { get; } = [];

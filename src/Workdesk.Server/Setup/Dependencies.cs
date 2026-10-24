@@ -28,12 +28,13 @@ public static class Dependencies
         services.AddTransient<INotificationService, NotificationService>();
         services.AddTransient<ITelegramLinkService, TelegramLinkService>();
         services.AddSingleton<ISharedTelegramBot, SharedTelegramBot>();
+        services.AddSingleton<TelegramProxyPool>();
         services.AddHttpClient("telegram-poll", client => client.Timeout = TimeSpan.FromSeconds(30))
-            .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false }).RemoveAllLoggers();
+            .ConfigurePrimaryHttpMessageHandler(provider => new TelegramProxyHandler(provider.GetRequiredService<TelegramProxyPool>())).RemoveAllLoggers();
         services.AddHostedService<TelegramWorker>();
         services.AddHttpContextAccessor();
         services.AddHttpClient("telegram", client => client.Timeout = TimeSpan.FromSeconds(15))
-            .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false }).RemoveAllLoggers();
+            .ConfigurePrimaryHttpMessageHandler(provider => new TelegramProxyHandler(provider.GetRequiredService<TelegramProxyPool>())).RemoveAllLoggers();
         services.AddSingleton<ISecretStore, SecretStore>();
         services.AddSingleton<SyncLocks>();
         services.AddSingleton<IDeliveryQueue, RedisDeliveryQueue>();
