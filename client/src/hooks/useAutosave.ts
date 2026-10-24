@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import type { FieldValues, UseFormReturn } from "react-hook-form";
 import { message } from "@/common/models";
+import { useWorkspaceStore } from "@/stores/useWorkspaceStore";
+import { accountDraftKey, readAccountDraft } from "@/common/accountDrafts";
 interface Options<T extends FieldValues> {
     form: UseFormReturn<T>;
     key: string;
@@ -11,12 +13,14 @@ interface Options<T extends FieldValues> {
 }
 export default function useAutosave<T extends FieldValues>({
     form,
-    key,
+    key: materialKey,
     revision: initial,
     validate,
     save,
     readOnly = false
 }: Options<T>) {
+    const userId = useWorkspaceStore((state) => state.userId);
+    const key = accountDraftKey(materialKey, userId);
     const [status, setStatus] = useState(readOnly ? "Только чтение" : "Сохранено");
     const [error, setError] = useState("");
     const [recovery, setRecovery] = useState<T | null>(null);
@@ -85,7 +89,7 @@ export default function useAutosave<T extends FieldValues>({
     useEffect(() => {
         if (readOnly) return;
         try {
-            const raw = localStorage.getItem(key);
+            const raw = readAccountDraft(localStorage, materialKey, userId);
             const draft = raw ? validate(JSON.parse(raw)) : null;
             if (draft && JSON.stringify(draft) !== saved.current) setRecovery(draft);
         } catch {
@@ -119,7 +123,7 @@ export default function useAutosave<T extends FieldValues>({
             window.removeEventListener("beforeunload", beforeUnload);
             void flushRef.current();
         };
-    }, [form, key, readOnly]);
+    }, [form, key, materialKey, userId, readOnly]);
     return {
         status,
         error,

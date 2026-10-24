@@ -25,7 +25,6 @@ import {
     useTeamPendingQuery,
     useTeamAcceptMutation
 } from "@/api/autogen/workdesk";
-import AccountPage from "./AccountPage";
 import InviteDialog from "./team/InviteDialog";
 import CreateTeamDialog from "./team/CreateTeamDialog";
 import TeamMembers from "./team/TeamMembers";
@@ -48,18 +47,8 @@ export default function TeamPage() {
     const space = spaces.find((item) => item.id === scope);
     const [createOpen, setCreateOpen] = useState(false);
     const [inviteId, setInviteId] = useState<string | null>(null);
-    const [setupOpen, setSetupOpen] = useState(false);
     const [error, setError] = useState("");
     const [notice, setNotice] = useState("");
-    if (session?.setupRequired && setupOpen)
-        return (
-            <Box>
-                <Button color="inherit" startIcon={<ArrowBackRounded />} onClick={() => setSetupOpen(false)}>
-                    Назад
-                </Button>
-                <AccountPage mode="setup" />
-            </Box>
-        );
     return (
         <Stack gap={3} sx={{ maxWidth: 880 }}>
             {space && (
@@ -172,7 +161,12 @@ export default function TeamPage() {
                     <Typography variant="body2" color="text.secondary">
                         С аккаунтом можно создавать команды и приглашать коллег. Личные задачи и документы сохранятся.
                     </Typography>
-                    <Button variant="contained" onClick={() => setSetupOpen(true)} sx={{ alignSelf: "start" }}>
+                    <Button
+                        variant="contained"
+                        component={Link}
+                        to="/register?returnTo=%2Fteam"
+                        sx={{ alignSelf: "start" }}
+                    >
                         Создать аккаунт
                     </Button>
                 </Stack>

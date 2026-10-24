@@ -12,7 +12,7 @@ export default function useSignOut() {
         await logout().unwrap();
         setScope("mine");
         store.dispatch(api.util.resetApiState());
-        navigate("/", { replace: true });
+        navigate("/login", { replace: true });
     }
     return { signOut, ...state };
 }

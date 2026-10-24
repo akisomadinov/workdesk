@@ -18,6 +18,10 @@ public sealed class AuthController(ITeamService team) : ControllerBase
     public async Task<SessionResponse> Setup(CredentialsRequest request, CancellationToken ct)
     { await SignIn(await team.Setup(request, ct)); return await team.Session(ct); }
     [EnableRateLimiting("auth")]
+    [HttpPost("register")]
+    public async Task<SessionResponse> Register(CredentialsRequest request, CancellationToken ct)
+    { await SignIn(await team.Register(request, ct)); return await team.Session(ct); }
+    [EnableRateLimiting("auth")]
     [HttpPost("login")]
     public async Task<SessionResponse> Login(CredentialsRequest request, CancellationToken ct)
     { await SignIn(await team.Login(request, ct)); return await team.Session(ct); }
@@ -25,6 +29,10 @@ public sealed class AuthController(ITeamService team) : ControllerBase
     [HttpPost("accept")]
     public async Task<SessionResponse> Accept(AcceptInvitationRequest request, CancellationToken ct)
     { await SignIn(await team.Accept(request, ct)); return await team.Session(ct); }
+    [EnableRateLimiting("auth")]
+    [HttpPost("join")]
+    public async Task<SessionResponse> Join(JoinInvitationRequest request, CancellationToken ct)
+    { await team.Join(request.Token, ct); return await team.Session(ct); }
     [HttpPost("logout")]
     public async Task<ActionResult> Logout() { await HttpContext.SignOutAsync(); return Ok(); }
     private Task SignIn(Account account)

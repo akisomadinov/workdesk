@@ -28,6 +28,17 @@ const injectedRtkApi = api
                 }),
                 invalidatesTags: ["Auth"],
             }),
+            authRegister: build.mutation<
+                AuthRegisterResponse,
+                AuthRegisterRequest
+            >({
+                query: (queryArg) => ({
+                    url: `/api/Auth/register`,
+                    method: "POST",
+                    body: queryArg.credentialsRequest,
+                }),
+                invalidatesTags: ["Auth"],
+            }),
             authLogin: build.mutation<AuthLoginResponse, AuthLoginRequest>({
                 query: (queryArg) => ({
                     url: `/api/Auth/login`,
@@ -41,6 +52,14 @@ const injectedRtkApi = api
                     url: `/api/Auth/accept`,
                     method: "POST",
                     body: queryArg.acceptInvitationRequest,
+                }),
+                invalidatesTags: ["Auth"],
+            }),
+            authJoin: build.mutation<AuthJoinResponse, AuthJoinRequest>({
+                query: (queryArg) => ({
+                    url: `/api/Auth/join`,
+                    method: "POST",
+                    body: queryArg.joinInvitationRequest,
                 }),
                 invalidatesTags: ["Auth"],
             }),
@@ -398,6 +417,10 @@ export type AuthSetupResponse = /** status 200 OK */ SessionResponse;
 export type AuthSetupRequest = {
     credentialsRequest: CredentialsRequest;
 };
+export type AuthRegisterResponse = /** status 200 OK */ SessionResponse;
+export type AuthRegisterRequest = {
+    credentialsRequest: CredentialsRequest;
+};
 export type AuthLoginResponse = /** status 200 OK */ SessionResponse;
 export type AuthLoginRequest = {
     credentialsRequest: CredentialsRequest;
@@ -405,6 +428,10 @@ export type AuthLoginRequest = {
 export type AuthAcceptResponse = /** status 200 OK */ SessionResponse;
 export type AuthAcceptRequest = {
     acceptInvitationRequest: AcceptInvitationRequest;
+};
+export type AuthJoinResponse = /** status 200 OK */ SessionResponse;
+export type AuthJoinRequest = {
+    joinInvitationRequest: JoinInvitationRequest;
 };
 export type AuthLogoutResponse = unknown;
 export type AuthLogoutRequest = void;
@@ -581,6 +608,9 @@ export type AcceptInvitationRequest = {
     name?: string | null;
     email?: string | null;
     password?: string | null;
+};
+export type JoinInvitationRequest = {
+    token?: string | null;
 };
 export type ConnectionResponse = {
     hasToken?: boolean;
@@ -860,8 +890,10 @@ export type StringString3C3EfAnonymousType0 = {
 export const {
     useAuthSessionQuery,
     useAuthSetupMutation,
+    useAuthRegisterMutation,
     useAuthLoginMutation,
     useAuthAcceptMutation,
+    useAuthJoinMutation,
     useAuthLogoutMutation,
     useConnectionsGetQuery,
     useConnectionsCreateMutation,

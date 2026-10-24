@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Workdesk.Data;
 
@@ -8,6 +9,7 @@ namespace Workdesk.Services;
 
 public sealed class CredentialsRequest { public string Login { get; set; } = ""; public string Name { get; set; } = ""; public string Email { get; set; } = ""; public string Password { get; set; } = ""; }
 public sealed class AcceptInvitationRequest { public string Login { get; set; } = ""; public string Token { get; set; } = ""; public string Name { get; set; } = ""; public string Email { get; set; } = ""; public string Password { get; set; } = ""; }
+public sealed class JoinInvitationRequest { public string Token { get; set; } = ""; }
 public sealed class CreateWorkspaceRequest { public string Name { get; set; } = ""; }
 public sealed class InviteRequest { public string Login { get; set; } = ""; public string Role { get; set; } = "reader"; }
 public sealed class RoleRequest { public string Role { get; set; } = "reader"; }
@@ -20,7 +22,9 @@ public interface ITeamService
 {
     Task<SessionResponse> Session(CancellationToken ct);
     Task<Account> Setup(CredentialsRequest request, CancellationToken ct);
+    Task<Account> Register(CredentialsRequest request, CancellationToken ct);
     Task<Account> Login(CredentialsRequest request, CancellationToken ct);
+    Task<Account> Join(string token, CancellationToken ct);
     Task<List<WorkspaceResponse>> List(CancellationToken ct);
     Task<WorkspaceResponse> Create(string name, CancellationToken ct);
     Task<InvitationResponse> Invite(Guid id, string role, CancellationToken ct, string login = "");
@@ -45,7 +49,24 @@ public sealed class TeamService(IUnitOfWork unit, ICurrentActor actor, RuntimeOp
         if (options.SharedMode || actor.Id != LocalIdentity.OwnerId || await unit.Accounts.Get(new UserId(LocalIdentity.OwnerId), ct) is not null)
             throw new AppException("Начальная настройка уже завершена или недоступна.", 403);
         var account = NewAccount(LocalIdentity.OwnerId, request.Name, request.Email, request.Password, request.Login);
-        unit.Accounts.Add(account); await unit.Commit(ct); options.LocalAccountConfigured = true; return account;
+        unit.Accounts.Add(account); await CommitAccount(ct); options.LocalAccountConfigured = true; return account;
+    }
+    public async Task<Account> Register(CredentialsRequest request, CancellationToken ct)
+    {
+        if (await unit.Accounts.Get(new UserId(LocalIdentity.OwnerId), ct) is null)
+            throw new AppException("Сначала создай аккаунт владельца на этом компьютере.", 403);
+        if (await unit.Accounts.Get(new UserId(actor.Id), ct) is not null)
+            throw new AppException("Сначала выйди из текущего аккаунта.", 409);
+        var account = NewAccount(Guid.NewGuid(), request.Name, request.Email, request.Password, request.Login);
+        unit.Accounts.Add(account);
+        await CommitAccount(ct);
+        return account;
+    }
+    private async Task CommitAccount(CancellationToken ct)
+    {
+        try { await unit.Commit(ct); }
+        catch (DbUpdateException exception) when (exception.InnerException is SqliteException { SqliteErrorCode: 19 })
+        { throw new AppException("Этот логин или адрес почты уже занят. Войди или укажи другой.", 409); }
     }
     public async Task<Account> Login(CredentialsRequest request, CancellationToken ct)
     {
@@ -67,7 +88,7 @@ public sealed class TeamService(IUnitOfWork unit, ICurrentActor actor, RuntimeOp
     }
     public async Task<WorkspaceResponse> Create(string name, CancellationToken ct)
     {
-        if (await unit.Accounts.Get(new UserId(actor.Id), ct) is null) throw new AppException("Сначала создай учётную запись в разделе команды.");
+        if (await unit.Accounts.Get(new UserId(actor.Id), ct) is null) throw new AppException("Сначала войди в свой аккаунт.", 401);
         if (string.IsNullOrWhiteSpace(name) || name.Length > 100) throw new AppException("Укажи название пространства, до 100 символов.");
         var workspace = new Workspace(name.Trim(), actor.Id); unit.Workspaces.Add(workspace);
         unit.Members.Add(new Membership(workspace.Id.Value, actor.Id, "owner")); await unit.Commit(ct);
@@ -89,16 +110,35 @@ public sealed class TeamService(IUnitOfWork unit, ICurrentActor actor, RuntimeOp
     }
     public async Task<Account> Accept(AcceptInvitationRequest request, CancellationToken ct)
     {
-        var invitation = (await unit.Invitations.GetAll(ct)).FirstOrDefault(x => x.TokenHash == Hash(request.Token) && !x.Used && x.Expires > DateTime.UtcNow)
-            ?? throw new AppException("Приглашение истекло или уже использовано.", 410);
+        var invitation = await FindInvitation(request.Token, ct);
         var email = request.Email.Trim().ToLowerInvariant();
-        var account = (await unit.Accounts.GetAll(ct)).FirstOrDefault(x => x.Email == email);
-        if (account is not null)
+        var identifier = string.IsNullOrWhiteSpace(request.Login) ? email : request.Login.Trim().ToLowerInvariant();
+        var account = (await unit.Accounts.GetAll(ct)).FirstOrDefault(x => x.Email == identifier || x.Login == identifier || (email.Length > 0 && x.Email == email));
+        if (account is not null || string.IsNullOrWhiteSpace(request.Name))
         {
-            if (request.Password.Length > 1024 || hasher.VerifyHashedPassword(account, account.PasswordHash, request.Password) == PasswordVerificationResult.Failed)
-                throw new AppException("Для существующей учётной записи укажи её пароль.", 401);
+            account = await Login(new CredentialsRequest { Login = identifier, Password = request.Password }, ct);
         }
-        else { if (invitation.TargetUserId is not null) throw new AppException("Это приглашение предназначено другому пользователю.", 403); account = NewAccount(Guid.NewGuid(), request.Name, email, request.Password, request.Login); unit.Accounts.Add(account); }
+        else
+        {
+            if (invitation.TargetUserId is not null) throw new AppException("Это приглашение предназначено другому пользователю.", 403);
+            account = NewAccount(Guid.NewGuid(), request.Name, email, request.Password, request.Login); unit.Accounts.Add(account);
+        }
+        return await AddInvitedMember(invitation, account, ct);
+    }
+    public async Task<Account> Join(string token, CancellationToken ct)
+    {
+        var account = await unit.Accounts.Get(new UserId(actor.Id), ct)
+            ?? throw new AppException("Войди в свой аккаунт.", 401);
+        return await AddInvitedMember(await FindInvitation(token, ct), account, ct);
+    }
+    private async Task<Invitation> FindInvitation(string token, CancellationToken ct)
+    {
+        if (token.Length != 64 || !token.All(char.IsAsciiHexDigit)) throw new AppException("Ссылка приглашения неполная или недействительна.", 410);
+        return (await unit.Invitations.GetAll(ct)).FirstOrDefault(x => x.TokenHash == Hash(token) && !x.Used && x.Expires > DateTime.UtcNow)
+            ?? throw new AppException("Приглашение истекло или уже использовано.", 410);
+    }
+    private async Task<Account> AddInvitedMember(Invitation invitation, Account account, CancellationToken ct)
+    {
         if (invitation.TargetUserId is not null && invitation.TargetUserId != account.Id.Value) throw new AppException("Это приглашение предназначено другому пользователю.", 403);
         var member = (await unit.Members.GetAll(ct)).FirstOrDefault(x => x.WorkspaceId == invitation.WorkspaceId && x.UserId == account.Id.Value);
         if (member is null)

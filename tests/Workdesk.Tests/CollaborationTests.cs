@@ -22,6 +22,69 @@ public sealed class CollaborationTests : IDisposable
     }
     private TeamService Team(Actor actor) => new(unit, actor, options);
     private AccessPolicy Rights(Actor actor) => new(unit, actor);
+    [Fact]
+    public async Task FirstAccountKeepsLocalTasksDocumentsConnectionsAndTelegram()
+    {
+        var tasks = new TaskService(unit, Rights(owner));
+        var notes = new NoteService(unit, Rights(owner));
+        var note = await notes.Save(new SaveNoteRequest { Title = "Existing document", Body = "Keep this" }, default);
+        var task = await tasks.Save(new SaveTaskRequest { Title = "Existing task", Notes = "Progress", DocumentIds = [note.Id] }, default);
+        var source = new Connection("Existing GitLab", "gitlab", "https://example.test/api/v4/", true);
+        source.SetScope(owner.Id, "team/project", true); unit.Connections.Add(source);
+        var telegram = new TelegramSettings(owner.Id); telegram.Link("123456", "Owner", "owner"); unit.Telegram.Add(telegram);
+        await unit.Commit(default);
+        var account = await Team(owner).Setup(new CredentialsRequest { Name = "Owner", Email = "owner@example.test", Login = "owner", Password = Password }, default);
+        db.ChangeTracker.Clear();
+        Assert.Equal(LocalIdentity.OwnerId, account.Id.Value);
+        Assert.True(options.RequireAuthentication);
+        var retained = Assert.Single(await tasks.GetAll(default));
+        Assert.Equal(task.Id, retained.Id); Assert.Equal("Progress", retained.Notes); Assert.Equal(note.Id, Assert.Single(retained.DocumentIds));
+        Assert.Equal("Keep this", Assert.Single(await notes.GetAll(default)).Body);
+        var retainedSource = Assert.Single(await unit.Connections.GetAll(default));
+        Assert.Equal(source.Id, retainedSource.Id); Assert.True(retainedSource.RequiresVpn); Assert.Equal("team/project", retainedSource.Projects);
+        Assert.Equal("123456", (await unit.Telegram.Get(account.Id.Value, default))!.ChatId);
+        Assert.Equal(403, (await Assert.ThrowsAsync<AppException>(() => Team(owner).Setup(new(), default))).Status);
+    }
+    [Fact]
+    public async Task SelfRegistrationCreatesPrivateAccountWithoutTeamOrOwnerData()
+    {
+        var space = await Space();
+        await new NoteService(unit, Rights(owner)).Save(new SaveNoteRequest { Title = "Owner private" }, default);
+        var source = new Connection("GitLab", "gitlab", "https://example.test/api/v4/", false); unit.Connections.Add(source);
+        var telegram = new TelegramSettings(owner.Id); telegram.Link("123456"); unit.Telegram.Add(telegram); await unit.Commit(default);
+        var anonymous = new Actor(Guid.Empty);
+        var credentials = new CredentialsRequest { Name = "New user", Login = "new-user", Email = "new@example.test", Password = Password };
+        var account = await Team(anonymous).Register(credentials, default);
+        var person = new Actor(account.Id.Value);
+        Assert.NotEqual(owner.Id, person.Id);
+        Assert.Empty(await Team(person).List(default));
+        Assert.Empty(await new NoteService(unit, Rights(person)).GetAll(default));
+        Assert.Null(await unit.Telegram.Get(person.Id, default));
+        var connections = new ConnectionService(unit, new Secrets(), new EmptyIssues(), new SyncLocks(), Rights(person));
+        Assert.Empty(await connections.GetAll(default));
+        Assert.Equal(404, (await Assert.ThrowsAsync<AppException>(() => connections.SetToken(source.Id.Value, "unrelated-test-token", default))).Status);
+        Assert.Equal(person.Id, (await Team(anonymous).Login(new CredentialsRequest { Login = "NEW-USER", Password = Password }, default)).Id.Value);
+        Assert.Equal(409, (await Assert.ThrowsAsync<AppException>(() => Team(person).Register(credentials, default))).Status);
+        var invitation = await Team(owner).Invite(space.Id, "reader", default);
+        await Team(person).Join(invitation.Token, default);
+        Assert.Equal("reader", Assert.Single(await Team(person).List(default)).Role);
+        Assert.Equal(410, (await Assert.ThrowsAsync<AppException>(() => Team(person).Join(invitation.Token, default))).Status);
+    }
+    [Fact]
+    public async Task RegistrationCannotClaimOwnerAndDuplicateCredentialsReturnConflict()
+    {
+        var anonymous = Team(new Actor(Guid.Empty));
+        var credentials = new CredentialsRequest { Name = "User", Login = "person", Email = "person@example.test", Password = Password };
+        Assert.Equal(403, (await Assert.ThrowsAsync<AppException>(() => anonymous.Register(credentials, default))).Status);
+        await Space();
+        await anonymous.Register(credentials, default);
+        db.ChangeTracker.Clear();
+        Assert.Equal(409, (await Assert.ThrowsAsync<AppException>(() => anonymous.Register(credentials, default))).Status);
+        db.ChangeTracker.Clear();
+        Assert.Equal(2, (await unit.Accounts.GetAll(default)).Count);
+    }
+    private sealed class EmptyIssues : IIssueClient
+    { public Task<List<ImportedIssue>> Fetch(Connection source, string token, CancellationToken ct) => Task.FromResult(new List<ImportedIssue>()); }
     private async Task<WorkspaceResponse> Space()
     {
         await Team(owner).Setup(new CredentialsRequest { Name = "Owner", Email = "owner@example.test", Login = "owner", Password = Password }, default);

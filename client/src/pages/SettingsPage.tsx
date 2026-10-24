@@ -11,7 +11,7 @@ const ConnectionsPage = lazy(() => import("./ConnectionsPage"));
 const NotificationSettings = lazy(() => import("./settings/NotificationSettings"));
 const sections = [
     { path: "/settings", label: "Общее", icon: <TuneRounded />, content: <GeneralSettings /> },
-    { path: "/settings/connections", label: "Подключения", icon: <CableRounded />, content: <ConnectionsPage /> },
+    { path: "/settings/connections", label: "GitLab и GitHub", icon: <CableRounded />, content: <ConnectionsPage /> },
     {
         path: "/settings/notifications",
         label: "Telegram",

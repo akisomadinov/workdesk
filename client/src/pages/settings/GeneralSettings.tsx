@@ -25,7 +25,7 @@ export default function GeneralSettings() {
                         Создай аккаунт, чтобы защитить вход паролем и приглашать людей. Твои задачи и документы
                         сохранятся.
                     </Typography>
-                    <Button component={Link} to="/team" variant="outlined" size="small">
+                    <Button component={Link} to="/register" variant="outlined" size="small">
                         Создать аккаунт
                     </Button>
                 </Box>

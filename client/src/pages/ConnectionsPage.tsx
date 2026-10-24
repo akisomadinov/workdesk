@@ -91,15 +91,26 @@ function ConnectionCard({ connection }: { connection: ConnectionResponse }) {
                             label={
                                 !connection.enabled
                                     ? "На паузе"
-                                    : (healthLabels[connection.health ?? "never"] ?? "Неизвестно")
+                                    : !connection.hasToken
+                                      ? "Нужен токен"
+                                      : (healthLabels[connection.health ?? "never"] ?? "Неизвестно")
                             }
-                            color={connection.enabled && connection.health === "ok" ? "success" : "default"}
+                            color={
+                                connection.enabled && connection.hasToken && connection.health === "ok"
+                                    ? "success"
+                                    : "default"
+                            }
                             variant="outlined"
                         />
                     </Stack>
                 </Stack>
                 {error && <Alert severity="error">{error}</Alert>}
-                {connection.message && (
+                {!connection.hasToken && (
+                    <Alert severity="info">
+                        Подключение сохранено. Добавь токен, чтобы задачи и комментарии обновлялись автоматически.
+                    </Alert>
+                )}
+                {connection.hasToken && connection.message && (
                     <Typography variant="body2" color="text.secondary">
                         {connection.message}
                     </Typography>
@@ -234,8 +245,26 @@ function ConnectionCard({ connection }: { connection: ConnectionResponse }) {
                 <DialogContent>
                     <Stack gap={2} sx={{ pt: 1 }}>
                         <Typography variant="body2" color="text.secondary">
-                            Токен хранится в связке ключей macOS. Он не попадает в базу задач и экспорт.
+                            Токен хранится отдельно от задач и не попадает в экспорт. На macOS используется связка
+                            ключей. Повторный вход его не удаляет.
                         </Typography>
+                        {connection.provider === "gitlab" && (
+                            <>
+                                <Typography variant="body2">
+                                    Создай личный токен с правом read_api и вставь его сюда. Выбери срок действия по
+                                    правилам своего GitLab.
+                                </Typography>
+                                <Button
+                                    component="a"
+                                    href={`${connection.apiUrl?.replace(/\/api\/v4\/?$/, "")}/-/user_settings/personal_access_tokens?name=Workdesk&scopes=read_api`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    sx={{ alignSelf: "start" }}
+                                >
+                                    Создать токен в GitLab
+                                </Button>
+                            </>
+                        )}
                         <TextField
                             label="Токен доступа"
                             type="password"
@@ -269,7 +298,7 @@ function ConnectionCard({ connection }: { connection: ConnectionResponse }) {
                             }
                         }}
                     >
-                        Сохранить токен
+                        {tokenState.isLoading ? "Сохраняем…" : "Сохранить токен"}
                     </Button>
                 </DialogActions>
             </Dialog>
@@ -311,9 +340,9 @@ export default function ConnectionsPage() {
                 alignItems={{ xs: "start", sm: "center" }}
             >
                 <Box>
-                    <Typography variant="h5">Подключения</Typography>
+                    <Typography variant="h5">GitLab и GitHub</Typography>
                     <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                        Каждый сервер синхронизируется независимо.
+                        Твои подключения сохраняются между входами в аккаунт.
                     </Typography>
                 </Box>
                 <Button

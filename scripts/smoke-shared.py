@@ -77,10 +77,22 @@ with tempfile.TemporaryDirectory(prefix="workdesk-http-") as directory:
 
     try:
         start(False)
+        # Claim the existing identity, without moving or recreating its data.
+        original_note, _ = request("/api/Notes/save", {"title": "Before signup", "body": "Preserve me"})
+        original_task, _ = request("/api/Tasks/save", {"title": "Before signup", "notes": "My progress", "documentIds": [original_note["id"]]})
+        original_source, _ = request("/api/Connections/save", {"name": "Saved GitLab", "provider": "gitlab", "apiUrl": "https://example.test/api/v4/", "projects": "team/project", "requiresVpn": True})
+        request("/api/Notifications/telegram", {"chatId": "123456", "enabled": False})
+        signup = {"name": "Independent", "login": "independent", "email": "independent@example.test", "password": PASSWORD}
+        request("/api/Auth/register", signup, expected=403)
         _, headers = request("/api/Auth/setup", {"name": "Owner", "login": "owner", "email": "owner@example.test", "password": PASSWORD})
         local_owner = headers["Set-Cookie"].split(";", 1)[0]
         session, _ = request("/api/Auth/session", cookie=local_owner)
         assert session["authenticated"]
+        assert session["userId"] == "00000000-0000-4000-8000-000000000001"
+        assert request("/api/Notes", cookie=local_owner)[0][0]["id"] == original_note["id"]
+        assert request("/api/Tasks", cookie=local_owner)[0][0]["id"] == original_task["id"]
+        assert request("/api/Connections", cookie=local_owner)[0][0]["id"] == original_source["id"]
+        assert request("/api/Notifications/telegram", cookie=local_owner)[0]["chatId"] == "123456"
         request("/api/Notes", cookie=local_owner)
         _, headers = request("/api/Auth/logout", {}, local_owner)
         assert "expires=" in headers["Set-Cookie"].lower()
@@ -88,6 +100,14 @@ with tempfile.TemporaryDirectory(prefix="workdesk-http-") as directory:
         assert not session["authenticated"] and not session["setupRequired"]
         request("/api/Notes", expected=401)
         request("/api/TelegramLink", {}, expected=401)
+        independent, headers = request("/api/Auth/register", signup)
+        newcomer = headers["Set-Cookie"].split(";", 1)[0]
+        assert independent["userId"] != session["userId"]
+        for path in ["/api/Tasks", "/api/Notes", "/api/Connections", "/api/Team", "/api/Notifications"]:
+            assert request(path, cookie=newcomer)[0] == []
+        assert request("/api/Notifications/telegram", cookie=newcomer)[0]["chatId"] == ""
+        request("/api/Auth/register", signup, expected=409)
+        request("/api/Auth/setup", signup, expected=403)
         stop()
         start(False)
         request("/api/Notes", expected=401)
@@ -133,6 +153,6 @@ with tempfile.TemporaryDirectory(prefix="workdesk-http-") as directory:
             except urllib.error.HTTPError as error:
                 statuses.append(error.code)
         assert 429 in statuses and all(code in (401, 429) for code in statuses)
-        print("HTTP smoke passed: local logout/restart/login, HTTPS/auth cookies, CSRF, isolation, roles, revocation, invitations, rate limit")
+        print("HTTP smoke passed: owner data preserved, independent signup, duplicate rejection, logout/restart/login, HTTPS/auth cookies, CSRF, isolation, roles, invitations, rate limit")
     finally:
         stop()

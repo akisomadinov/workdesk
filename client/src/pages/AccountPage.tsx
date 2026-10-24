@@ -1,109 +1,185 @@
-import { useState } from "react";
-import { Alert, Box, Button, Stack, Tab, Tabs, TextField, Typography } from "@mui/material";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
-import { useNavigate } from "react-router-dom";
-import { useAuthSetupMutation, useAuthLoginMutation, useAuthAcceptMutation } from "@/api/autogen/workdesk";
-import { api } from "@/api/api";
-import { store } from "@/app/store";
-import { message } from "@/common/models";
-const credentialsSchema = z.object({
-    name: z.string(),
-    login: z.string(),
-    email: z.string().min(1, "Укажи логин или почту"),
-    password: z.string().min(1, "Укажи пароль").max(1024)
-});
-type Values = z.infer<typeof credentialsSchema>;
-export default function AccountPage({ mode }: { mode: "setup" | "login" | "join" }) {
-    const form = useForm<Values>({
-        resolver: zodResolver(credentialsSchema),
-        mode: "onChange",
-        defaultValues: { name: "", login: "", email: "", password: "" }
-    });
-    const [setup] = useAuthSetupMutation();
-    const [login] = useAuthLoginMutation();
-    const [accept] = useAuthAcceptMutation();
-    const [joinMode, setJoinMode] = useState<"new" | "existing">("new");
-    const creating = mode === "setup" || (mode === "join" && joinMode === "new");
-    const [error, setError] = useState("");
-    const navigate = useNavigate();
-    async function submit(values: Values) {
-        setError("");
-        try {
-            if (mode === "setup") await setup({ credentialsRequest: values }).unwrap();
-            else if (mode === "login") await login({ credentialsRequest: { ...values, login: values.email } }).unwrap();
-            else await accept({ acceptInvitationRequest: { ...values, token: location.hash.slice(1) } }).unwrap();
-            store.dispatch(api.util.resetApiState());
-            navigate(mode === "login" ? "/" : "/team", { replace: true });
-        } catch (failure) {
-            setError(message(failure));
-        }
-    }
+import { Alert, Box, Button, Link as MuiLink, Stack, Tab, Tabs, TextField, Typography } from "@mui/material";
+import DashboardRounded from "@mui/icons-material/DashboardRounded";
+import { FormProvider } from "react-hook-form";
+import { Link } from "react-router-dom";
+import type { SessionResponse } from "@/api/autogen/workdesk";
+import ThemeMenu from "@/common/layout/ThemeMenu";
+import useAccountForm from "./account/useAccountForm";
+import PasswordField from "./account/PasswordField";
+import { accountPath } from "./account/navigation";
+
+export default function AccountPage({
+    mode,
+    session
+}: {
+    mode: "register" | "login" | "join";
+    session: SessionResponse;
+}) {
+    const account = useAccountForm(mode, session.setupRequired ?? false);
+    const { form, creating, error } = account;
+    const joining = mode === "join";
+    const firstAccount = mode === "register" && session.setupRequired;
+    const title = joining
+        ? "Приглашение в команду"
+        : firstAccount
+          ? "Твоё пространство, твой аккаунт"
+          : creating
+            ? "Создать аккаунт"
+            : "Войти в Workdesk";
     return (
-        <Box sx={{ maxWidth: 480, mx: "auto", py: 5, px: 3 }}>
-            <form onSubmit={form.handleSubmit(submit)}>
-                <Stack gap={2.5}>
-                    <Typography variant="h5">
-                        {mode === "setup"
-                            ? "Настроить командную работу"
-                            : mode === "join"
-                              ? "Присоединиться к команде"
-                              : "Войти в Workdesk"}
+        <Box sx={{ minHeight: "100dvh", bgcolor: "background.default", display: "flex", flexDirection: "column" }}>
+            <Stack
+                component="header"
+                direction="row"
+                justifyContent="space-between"
+                alignItems="center"
+                sx={{ px: { xs: 2, sm: 4 }, py: 2 }}
+            >
+                <Stack direction="row" alignItems="center" gap={1}>
+                    <DashboardRounded sx={{ color: "primary.main", fontSize: 24 }} />
+                    <Typography fontWeight={750} letterSpacing={-0.5}>
+                        Workdesk
                     </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                        {mode === "setup"
-                            ? "Личные материалы останутся твоими. В общие пространства можно приглашать участников."
-                            : mode === "join"
-                              ? "Войди или создай аккаунт — приглашение добавит тебя в команду автоматически."
-                              : "Открой личные задачи и доступные тебе командные пространства."}
-                    </Typography>
-                    {mode === "join" && (
-                        <Tabs
-                            value={joinMode}
-                            onChange={(_, value: "new" | "existing") => {
-                                setJoinMode(value);
-                                setError("");
-                            }}
-                            variant="fullWidth"
-                            aria-label="Аккаунт для приглашения"
-                        >
-                            <Tab value="new" label="Создать аккаунт" />
-                            <Tab value="existing" label="Уже есть аккаунт" />
-                        </Tabs>
-                    )}
-                    {creating && <TextField label="Имя" {...form.register("name")} autoComplete="name" />}
-                    {creating && (
-                        <TextField
-                            label="Логин"
-                            {...form.register("login")}
-                            autoComplete="username"
-                            helperText="3–40 латинских букв, цифр, дефисов и подчёркиваний"
-                        />
-                    )}
-                    <TextField
-                        label={mode === "login" ? "Логин или почта" : "Почта"}
-                        {...form.register("email")}
-                        autoComplete={mode === "login" ? "username" : "email"}
-                        error={!!form.formState.errors.email}
-                        helperText={form.formState.errors.email?.message}
-                    />
-                    <TextField
-                        label="Пароль"
-                        type="password"
-                        {...form.register("password")}
-                        autoComplete={creating ? "new-password" : "current-password"}
-                        error={!!form.formState.errors.password}
-                        helperText={
-                            form.formState.errors.password?.message ?? (creating ? "Не меньше 12 символов" : "")
-                        }
-                    />
-                    {error && <Alert severity="error">{error}</Alert>}
-                    <Button variant="contained" type="submit" disabled={form.formState.isSubmitting}>
-                        {mode === "setup" ? "Создать аккаунт" : mode === "join" ? "Присоединиться" : "Войти"}
-                    </Button>
                 </Stack>
-            </form>
+                <ThemeMenu />
+            </Stack>
+            <Box
+                component="main"
+                sx={{ width: "100%", maxWidth: 456, mx: "auto", px: { xs: 2.5, sm: 3 }, pt: { xs: 2, sm: 5 }, pb: 5 }}
+            >
+                <Stack gap={3}>
+                    <Box>
+                        <Typography
+                            variant="h4"
+                            component="h1"
+                            sx={{ fontSize: { xs: 26, sm: 30 }, lineHeight: 1.2, mb: 1.5 }}
+                        >
+                            {title}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                            {firstAccount
+                                ? "Задачи, документы, GitLab и Telegram сохранятся за этим аккаунтом. Придумай логин и пароль для входа."
+                                : joining
+                                  ? "После подтверждения здесь появятся общая доска и документы команды."
+                                  : creating
+                                    ? "Личные задачи, документы и подключения будут доступны только тебе."
+                                    : "Продолжи работу со своими задачами и документами."}
+                        </Typography>
+                    </Box>
+                    {joining && !account.validInvitation ? (
+                        <Alert severity="warning">
+                            В ссылке нет действительного приглашения. Попроси владельца команды прислать новую ссылку.
+                        </Alert>
+                    ) : joining && session.authenticated ? (
+                        <Stack gap={2}>
+                            <Typography variant="body2">
+                                Присоединиться как <strong>{session.name}</strong> · @{session.login}
+                            </Typography>
+                            {error && <Alert severity="error">{error}</Alert>}
+                            <Button
+                                variant="contained"
+                                disabled={account.joining}
+                                onClick={() => void account.joinCurrent()}
+                            >
+                                {account.joining ? "Присоединяемся…" : "Присоединиться к команде"}
+                            </Button>
+                            <Button component={Link} to="/">
+                                Вернуться в своё пространство
+                            </Button>
+                        </Stack>
+                    ) : (
+                        <>
+                            {joining && (
+                                <Tabs
+                                    value={account.joinMode}
+                                    onChange={(_, value: "new" | "existing") => account.changeJoinMode(value)}
+                                    variant="fullWidth"
+                                    aria-label="Аккаунт для приглашения"
+                                >
+                                    <Tab value="new" label="Создать аккаунт" />
+                                    <Tab value="existing" label="Уже есть аккаунт" />
+                                </Tabs>
+                            )}
+                            <FormProvider {...form}>
+                                <Stack
+                                    component="form"
+                                    noValidate
+                                    onSubmit={form.handleSubmit(account.submit)}
+                                    gap={2.5}
+                                >
+                                    {creating && (
+                                        <>
+                                            <TextField
+                                                label="Имя"
+                                                {...form.register("name")}
+                                                autoComplete="name"
+                                                error={!!form.formState.errors.name}
+                                                helperText={form.formState.errors.name?.message}
+                                            />
+                                            <TextField
+                                                label="Логин"
+                                                {...form.register("login")}
+                                                autoComplete="username"
+                                                slotProps={{ htmlInput: { autoCapitalize: "none", spellCheck: false } }}
+                                                error={!!form.formState.errors.login}
+                                                helperText={
+                                                    form.formState.errors.login?.message ??
+                                                    "По логину коллеги смогут пригласить тебя в команду"
+                                                }
+                                            />
+                                        </>
+                                    )}
+                                    <TextField
+                                        label={creating ? "Почта" : "Логин или почта"}
+                                        type={creating ? "email" : "text"}
+                                        {...form.register("email")}
+                                        autoComplete={creating ? "email" : "username"}
+                                        slotProps={{ htmlInput: { autoCapitalize: "none", spellCheck: false } }}
+                                        error={!!form.formState.errors.email}
+                                        helperText={form.formState.errors.email?.message}
+                                    />
+                                    <PasswordField creating={creating} />
+                                    {creating && <PasswordField creating confirmation />}
+                                    {error && <Alert severity="error">{error}</Alert>}
+                                    <Button
+                                        size="large"
+                                        variant="contained"
+                                        type="submit"
+                                        disabled={form.formState.isSubmitting}
+                                    >
+                                        {form.formState.isSubmitting
+                                            ? "Подожди…"
+                                            : joining
+                                              ? "Присоединиться"
+                                              : creating
+                                                ? "Создать аккаунт"
+                                                : "Войти"}
+                                    </Button>
+                                </Stack>
+                            </FormProvider>
+                        </>
+                    )}
+                    {!joining && !firstAccount && (
+                        <Typography variant="body2" color="text.secondary" textAlign="center">
+                            {creating ? "Уже есть аккаунт? " : "Впервые здесь? "}
+                            <MuiLink
+                                component={Link}
+                                to={accountPath(creating ? "login" : "register", account.returnTo)}
+                                underline="hover"
+                                fontWeight={600}
+                            >
+                                {creating ? "Войти" : "Создать аккаунт"}
+                            </MuiLink>
+                        </Typography>
+                    )}
+                    {firstAccount && (
+                        <Typography variant="caption" color="text.secondary">
+                            Это первая настройка на этом компьютере. Остальные пользователи создадут отдельные аккаунты
+                            после тебя.
+                        </Typography>
+                    )}
+                </Stack>
+            </Box>
         </Box>
     );
 }

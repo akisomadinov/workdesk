@@ -16,6 +16,7 @@ import PersonOutlineRounded from "@mui/icons-material/PersonOutlineRounded";
 import SettingsOutlined from "@mui/icons-material/SettingsOutlined";
 import LogoutRounded from "@mui/icons-material/LogoutRounded";
 import LoginRounded from "@mui/icons-material/LoginRounded";
+import CableRounded from "@mui/icons-material/CableRounded";
 import { Link } from "react-router-dom";
 import { useAuthSessionQuery } from "@/api/autogen/workdesk";
 import useSignOut from "@/hooks/useSignOut";
@@ -64,6 +65,12 @@ export default function AccountMenu() {
                     </ListItemIcon>
                     <ListItemText>Настройки</ListItemText>
                 </MenuItem>
+                <MenuItem component={Link} to="/settings/connections" onClick={() => setAnchor(null)}>
+                    <ListItemIcon>
+                        <CableRounded fontSize="small" />
+                    </ListItemIcon>
+                    <ListItemText>GitLab и GitHub</ListItemText>
+                </MenuItem>
                 {session?.authenticated ? (
                     <MenuItem disabled={isLoading} onClick={() => void signOut().catch(() => {})}>
                         <ListItemIcon>
@@ -72,7 +79,11 @@ export default function AccountMenu() {
                         <ListItemText>{isLoading ? "Выходим…" : "Выйти"}</ListItemText>
                     </MenuItem>
                 ) : (
-                    <MenuItem component={Link} to="/team" onClick={() => setAnchor(null)}>
+                    <MenuItem
+                        component={Link}
+                        to={session?.setupRequired ? "/register" : "/login"}
+                        onClick={() => setAnchor(null)}
+                    >
                         <ListItemIcon>
                             <LoginRounded fontSize="small" />
                         </ListItemIcon>
