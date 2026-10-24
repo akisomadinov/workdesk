@@ -18,7 +18,7 @@ public interface IConnectionService
     Task<ConnectionResponse> Sync(Guid id, CancellationToken ct);
     Task<ConnectionResponse> SetScope(Guid id, SetScopeRequest request, CancellationToken ct);
 }
-public sealed class ConnectionService(IUnitOfWork unit, ISecretStore secrets, IIssueClient client, SyncLocks locks, IAccessPolicy? access = null, INotificationService? notifications = null, IActivityClient? activities = null, RuntimeOptions? runtime = null) : IConnectionService
+public sealed class ConnectionService(IUnitOfWork unit, ISecretStore secrets, IIssueClient client, SyncLocks locks, IAccessPolicy? access = null, INotificationService? notifications = null, IMergeRequestService? mergeRequests = null, RuntimeOptions? runtime = null) : IConnectionService
 {
     private readonly IAccessPolicy rights = access ?? new AccessPolicy(unit, new LocalActor());
     public async Task<List<ConnectionResponse>> GetAll(CancellationToken ct) =>
@@ -78,15 +78,14 @@ public sealed class ConnectionService(IUnitOfWork unit, ISecretStore secrets, II
                     var item = await unit.Tasks.FindExternal(connection.Id, issue.Key, ct);
                     if (item is null)
                     {
-                        item = new WorkItem(issue.Title, issue.Project, issue.Description); item.SetOwner(connection.OwnerId); unit.Tasks.Add(item);
+                        var initialState = connection.Provider == "gitlab" ? GitLabWorkflow.InitialState(issue.State, issue.Labels) : (Stage: "inbox", Blocker: "");
+                        item = new WorkItem(issue.Title, issue.Project, issue.Description, initialState.Stage, initialState.Blocker); item.SetOwner(connection.OwnerId); unit.Tasks.Add(item);
                         if (connection.LastSuccess is not null && notifications is not null) await notifications.Record(connection.OwnerId, $"{id}:task:{issue.Key}", "Новая задача: " + issue.Title, issue.Url, "task", ct);
                     }
                     item.Import(connection.Id, issue.Key, issue.Title, issue.Project, issue.Description, issue.Url, issue.State, issue.Updated);
                     item.SetExternalMilestone(issue.Milestone);
                 }
-                if (activities is not null && notifications is not null)
-                    foreach (var activity in await activities.Fetch(connection, token, timeout.Token))
-                        await notifications.Record(connection.OwnerId, activity.Key, activity.Title, activity.Url, "comment", ct);
+                if (mergeRequests is not null) await mergeRequests.Sync(connection, token, timeout.Token);
                 connection.Record("ok", $"Синхронизация завершена. Обработано задач: {issues.Count}.", issues.Count, started);
             }
             catch (SourceException exception) { connection.Record(exception.Health, exception.Message); }

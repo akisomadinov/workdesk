@@ -2,10 +2,12 @@ import { api } from "../api";
 export const addTagTypes = [
     "Auth",
     "Connections",
+    "MergeRequests",
     "Notes",
     "Notifications",
     "Tasks",
     "Team",
+    "TelegramLink",
     "Workdesk.Server",
 ] as const;
 const injectedRtkApi = api
@@ -106,6 +108,47 @@ const injectedRtkApi = api
                     method: "POST",
                 }),
                 invalidatesTags: ["Connections"],
+            }),
+            mergeRequestsGet: build.query<
+                MergeRequestsGetResponse,
+                MergeRequestsGetRequest
+            >({
+                query: () => ({ url: `/api/MergeRequests` }),
+                providesTags: ["MergeRequests"],
+            }),
+            mergeRequestsDetails: build.query<
+                MergeRequestsDetailsResponse,
+                MergeRequestsDetailsRequest
+            >({
+                query: (queryArg) => ({
+                    url: `/api/MergeRequests/${queryArg.id}`,
+                    params: {
+                        page: queryArg.page,
+                    },
+                }),
+                providesTags: ["MergeRequests"],
+            }),
+            mergeRequestsNotifications: build.mutation<
+                MergeRequestsNotificationsResponse,
+                MergeRequestsNotificationsRequest
+            >({
+                query: (queryArg) => ({
+                    url: `/api/MergeRequests/${queryArg.id}/notifications`,
+                    method: "POST",
+                    body: queryArg.setEnabledRequest,
+                }),
+                invalidatesTags: ["MergeRequests"],
+            }),
+            mergeRequestsRead: build.mutation<
+                MergeRequestsReadResponse,
+                MergeRequestsReadRequest
+            >({
+                query: (queryArg) => ({
+                    url: `/api/MergeRequests/${queryArg.id}/read`,
+                    method: "POST",
+                    body: queryArg.readMergeCommentsRequest,
+                }),
+                invalidatesTags: ["MergeRequests"],
             }),
             notesGet: build.query<NotesGetResponse, NotesGetRequest>({
                 query: () => ({ url: `/api/Notes` }),
@@ -289,6 +332,27 @@ const injectedRtkApi = api
                 }),
                 invalidatesTags: ["Team"],
             }),
+            telegramLinkGet: build.query<
+                TelegramLinkGetResponse,
+                TelegramLinkGetRequest
+            >({
+                query: () => ({ url: `/api/TelegramLink` }),
+                providesTags: ["TelegramLink"],
+            }),
+            telegramLinkCreate: build.mutation<
+                TelegramLinkCreateResponse,
+                TelegramLinkCreateRequest
+            >({
+                query: () => ({ url: `/api/TelegramLink`, method: "POST" }),
+                invalidatesTags: ["TelegramLink"],
+            }),
+            telegramLinkDelete: build.mutation<
+                TelegramLinkDeleteResponse,
+                TelegramLinkDeleteRequest
+            >({
+                query: () => ({ url: `/api/TelegramLink`, method: "DELETE" }),
+                invalidatesTags: ["TelegramLink"],
+            }),
             appapihealth: build.query<
                 AppapihealthResponse,
                 AppapihealthRequest
@@ -353,6 +417,25 @@ export type ConnectionsSyncResponse =
     /** status 200 OK */ ConnectionResponseRead;
 export type ConnectionsSyncRequest = {
     id: string;
+};
+export type MergeRequestsGetResponse =
+    /** status 200 OK */ MergeRequestResponse[];
+export type MergeRequestsGetRequest = void;
+export type MergeRequestsDetailsResponse =
+    /** status 200 OK */ MergeRequestDetailsResponse;
+export type MergeRequestsDetailsRequest = {
+    id: string;
+    page?: number;
+};
+export type MergeRequestsNotificationsResponse = unknown;
+export type MergeRequestsNotificationsRequest = {
+    id: string;
+    setEnabledRequest: SetEnabledRequest;
+};
+export type MergeRequestsReadResponse = unknown;
+export type MergeRequestsReadRequest = {
+    id: string;
+    readMergeCommentsRequest: ReadMergeCommentsRequest;
 };
 export type NotesGetResponse = /** status 200 OK */ NoteResponseRead[];
 export type NotesGetRequest = void;
@@ -439,6 +522,13 @@ export type TeamRoleRequest = {
     user: string;
     roleRequest: RoleRequest;
 };
+export type TelegramLinkGetResponse = /** status 200 OK */ TelegramLinkState;
+export type TelegramLinkGetRequest = void;
+export type TelegramLinkCreateResponse =
+    /** status 200 OK */ TelegramLinkResponse;
+export type TelegramLinkCreateRequest = void;
+export type TelegramLinkDeleteResponse = unknown;
+export type TelegramLinkDeleteRequest = void;
 export type AppapihealthResponse =
     /** status 200 OK */ StringString3C3EfAnonymousType0;
 export type AppapihealthRequest = void;
@@ -503,6 +593,66 @@ export type SetScopeRequest = {
     projects?: string | null;
     watchMergeRequests?: boolean;
 };
+export type MergeRequestResponse = {
+    id?: string;
+    connectionId?: string;
+    source?: string | null;
+    provider?: string | null;
+    project?: string | null;
+    number?: number;
+    title?: string | null;
+    url?: string | null;
+    state?: string | null;
+    author?: string | null;
+    reviewers?: string | null;
+    sourceBranch?: string | null;
+    targetBranch?: string | null;
+    isAuthor?: boolean;
+    needsMyReview?: boolean;
+    draft?: boolean;
+    notificationsEnabled?: boolean;
+    unreadComments?: number;
+    commentCount?: number;
+    sourceUpdated?: string;
+};
+export type MergeCodeLine = {
+    oldLine?: number | null;
+    newLine?: number | null;
+    kind?: string | null;
+    text?: string | null;
+    highlighted?: boolean;
+};
+export type MergeCodeContext = {
+    path?: string | null;
+    oldPath?: string | null;
+    oldLine?: number | null;
+    newLine?: number | null;
+    commit?: string | null;
+    outdated?: boolean;
+    resolved?: boolean | null;
+    lines?: MergeCodeLine[] | null;
+};
+export type MergeCommentResponse = {
+    id?: string;
+    author?: string | null;
+    body?: string | null;
+    url?: string | null;
+    isOwn?: boolean;
+    read?: boolean;
+    postedAt?: string;
+    updatedAt?: string;
+    codeContext?: MergeCodeContext;
+};
+export type MergeRequestDetailsResponse = {
+    item?: MergeRequestResponse;
+    description?: string | null;
+    comments?: MergeCommentResponse[] | null;
+    page?: number;
+    totalPages?: number;
+};
+export type ReadMergeCommentsRequest = {
+    ids?: string[] | null;
+};
 export type NoteResponse = {
     canEdit?: boolean;
 };
@@ -559,11 +709,13 @@ export type NotificationResponse = {
     read?: boolean;
     delivery?: string | null;
     created?: string;
+    mergeRequestId?: string | null;
 };
 export type TelegramResponse = {
     chatId?: string | null;
     enabled?: boolean;
     hasToken?: boolean;
+    useSharedBot?: boolean;
 };
 export type SaveTelegramRequest = {
     chatId?: string | null;
@@ -654,6 +806,15 @@ export type PendingInvitationResponse = {
 export type RoleRequest = {
     role?: string | null;
 };
+export type TelegramLinkState = {
+    available?: boolean;
+    connected?: boolean;
+    pendingUntil?: string | null;
+};
+export type TelegramLinkResponse = {
+    url?: string | null;
+    expiresAt?: string;
+};
 export type StringString3C3EfAnonymousType0 = {
     status?: string | null;
     version?: string | null;
@@ -670,6 +831,10 @@ export const {
     useConnectionsEnableMutation,
     useConnectionsScopeMutation,
     useConnectionsSyncMutation,
+    useMergeRequestsGetQuery,
+    useMergeRequestsDetailsQuery,
+    useMergeRequestsNotificationsMutation,
+    useMergeRequestsReadMutation,
     useNotesGetQuery,
     useNotesSaveMutation,
     useNotesHistoryQuery,
@@ -693,6 +858,9 @@ export const {
     useTeamPendingQuery,
     useTeamAcceptMutation,
     useTeamRoleMutation,
+    useTelegramLinkGetQuery,
+    useTelegramLinkCreateMutation,
+    useTelegramLinkDeleteMutation,
     useAppapihealthQuery,
     useAppapibackupQuery,
 } = injectedRtkApi;

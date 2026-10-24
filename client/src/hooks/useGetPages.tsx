@@ -7,6 +7,8 @@ export const NotesPage = lazy(() => import("@/pages/NotesPage"));
 const TeamPage = lazy(() => import("@/pages/TeamPage"));
 const ReportsPage = lazy(() => import("@/pages/ReportsPage"));
 const NotificationsPage = lazy(() => import("@/pages/NotificationsPage"));
+const MergeRequestsPage = lazy(() => import("@/pages/MergeRequestsPage"));
+const MergeRequestDetails = lazy(() => import("@/pages/merge-requests/MergeRequestDetails"));
 const SettingsPage = lazy(() => import("@/pages/SettingsPage"));
 export default function useGetPages() {
     return [
@@ -18,6 +20,8 @@ export default function useGetPages() {
         { path: "/notes", label: "Документы", component: <NotesPage /> },
         { path: "/reports", label: "Итоги", component: <ReportsPage /> },
         { path: "/notifications", label: "Уведомления", component: <NotificationsPage /> },
+        { path: "/merge-requests", label: "Мои MR", component: <MergeRequestsPage /> },
+        { path: "/merge-requests/:id", label: "Обсуждение MR", component: <MergeRequestDetails /> },
         { path: "/team", label: "Команда", component: <TeamPage /> },
         { path: "/settings/*", label: "Настройки", component: <SettingsPage /> },
         { path: "/connections", label: "Подключения", component: <Navigate to="/settings/connections" replace /> }

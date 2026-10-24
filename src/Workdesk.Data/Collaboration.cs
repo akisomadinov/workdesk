@@ -86,6 +86,7 @@ public sealed class NoteRevision : BaseEntity<RevisionId>
 }
 public sealed class Notification : BaseEntity<NotificationId>
 {
+    public Guid? MergeRequestId { get; private set; }
     public Guid OwnerId { get; private set; }
     public string EventKey { get; private set; } = "";
     public string Title { get; private set; } = "";
@@ -96,9 +97,10 @@ public sealed class Notification : BaseEntity<NotificationId>
     public int Attempts { get; private set; }
     public DateTime? RetryAt { get; private set; }
     private Notification() { }
-    public Notification(Guid owner, string key, string title, string url, string kind, bool telegram)
-    { Id = NotificationId.New(); OwnerId = owner; EventKey = key; Title = title; Url = url; Kind = kind; Delivery = telegram ? "pending" : "off"; }
+    public Notification(Guid owner, string key, string title, string url, string kind, bool telegram, Guid? mergeRequestId = null)
+    { Id = NotificationId.New(); OwnerId = owner; EventKey = key; Title = title; Url = url; Kind = kind; Delivery = telegram ? "pending" : "off"; MergeRequestId = mergeRequestId; }
     public void MarkRead() => Read = true;
+    public void StopDelivery() { if (Delivery == "pending") { Delivery = "off"; RetryAt = null; } }
     public void Delivered() { Delivery = "sent"; Attempts++; RetryAt = null; }
     public void Failed(int? delaySeconds = null) { Attempts++; Delivery = Attempts >= 5 ? "failed" : "pending"; RetryAt = DateTime.UtcNow.AddSeconds(delaySeconds ?? Math.Min(3600, 30 * Math.Pow(2, Attempts))); }
     public void Sending() { Delivery = "sending"; RetryAt = DateTime.UtcNow; }
@@ -106,10 +108,13 @@ public sealed class Notification : BaseEntity<NotificationId>
 }
 public sealed class TelegramSettings
 {
+    public bool UseSharedBot { get; private set; }
     public Guid OwnerId { get; private set; }
     public string ChatId { get; private set; } = "";
     public bool Enabled { get; private set; }
     private TelegramSettings() { }
     public TelegramSettings(Guid owner) => OwnerId = owner;
     public void Update(string chat, bool enabled) { ChatId = chat; Enabled = enabled; }
+    public void Link(string chat) { ChatId = chat; Enabled = true; UseSharedBot = true; }
+    public void Unlink() { ChatId = ""; Enabled = false; UseSharedBot = false; }
 }

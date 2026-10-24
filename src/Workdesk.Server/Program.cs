@@ -36,6 +36,8 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 var dataDirectory = Environment.GetEnvironmentVariable("WORKDESK_DATA_DIR")
     ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Workdesk");
 Directory.CreateDirectory(dataDirectory);
+builder.Services.AddSingleton(new TelegramBotOptions { TokenFile = Environment.GetEnvironmentVariable("WORKDESK_TELEGRAM_BOT_TOKEN_FILE")
+    ?? Path.Combine(dataDirectory, "secrets", "telegram-bot-token") });
 var instanceId = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(dataDirectory)))[..12];
 builder.Services.AddDataProtection().SetApplicationName("Workdesk-" + instanceId).PersistKeysToFileSystem(new DirectoryInfo(Path.Combine(dataDirectory, "keys")));
 builder.Services.Configure<CookieAuthenticationOptions>(CookieAuthenticationDefaults.AuthenticationScheme, cookie => cookie.Cookie.Name = "Workdesk.Session." + instanceId);
@@ -91,7 +93,7 @@ app.UseSwagger();
 app.UseDefaultFiles();
 app.UseStaticFiles();
 app.MapControllers();
-app.MapGet("/api/health", () => new { status = "ok", version = "0.7.0" });
+app.MapGet("/api/health", () => new { status = "ok", version = "0.8.0" });
 app.MapGet("/api/backup", async (ITaskService tasks, IConnectionService connections, INoteService notes, CancellationToken ct) =>
     Results.Json(new { Version = 3, ExportedAt = DateTime.UtcNow, Tasks = await tasks.GetAll(ct), Connections = await connections.GetAll(ct), Notes = await notes.GetAll(ct), DeletedTasks = await tasks.GetDeleted(ct), DeletedNotes = await notes.GetDeleted(ct) }));
 app.MapFallbackToFile("index.html");

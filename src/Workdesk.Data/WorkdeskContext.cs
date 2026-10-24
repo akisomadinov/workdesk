@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
+using System.Text.Json;
 
 namespace Workdesk.Data;
 
@@ -47,5 +48,24 @@ public sealed class WorkdeskContext(DbContextOptions<WorkdeskContext> options) :
         builder.Entity<Notification>().Property(x => x.Id).HasConversion(x => x.Value, x => new NotificationId(x)).ValueGeneratedNever();
         builder.Entity<Notification>().HasIndex(x => new { x.OwnerId, x.EventKey }).IsUnique();
         builder.Entity<TelegramSettings>().HasKey(x => x.OwnerId);
+        builder.Entity<TelegramLink>().HasKey(x => x.OwnerId);
+        builder.Entity<TelegramLink>().HasIndex(x => x.TokenHash).IsUnique();
+        builder.Entity<TelegramLink>().Property(x => x.TokenHash).IsConcurrencyToken();
+        builder.Entity<TelegramLink>().Property(x => x.Used).IsConcurrencyToken();
+        builder.Entity<TelegramInbox>().HasKey(x => x.BotId);
+        builder.Entity<TelegramInbox>().Property(x => x.Offset).IsConcurrencyToken();
+        var merge = builder.Entity<MergeRequest>();
+        merge.Property(x => x.Id).HasConversion(x => x.Value, x => new MergeRequestId(x)).ValueGeneratedNever();
+        merge.Property(x => x.ConnectionId).HasConversion(x => x.Value, x => new ConnectionId(x));
+        merge.HasIndex(x => new { x.ConnectionId, x.ExternalKey }).IsUnique();
+        merge.HasOne<Connection>().WithMany().HasForeignKey(x => x.ConnectionId).OnDelete(DeleteBehavior.Cascade);
+        var comment = builder.Entity<MergeComment>();
+        comment.Property(x => x.CodeContext).HasConversion(
+            x => JsonSerializer.Serialize(x, (JsonSerializerOptions?)null),
+            x => JsonSerializer.Deserialize<MergeCodeContext>(x, (JsonSerializerOptions?)null));
+        comment.Property(x => x.Id).HasConversion(x => x.Value, x => new MergeCommentId(x)).ValueGeneratedNever();
+        comment.Property(x => x.MergeRequestId).HasConversion(x => x.Value, x => new MergeRequestId(x));
+        comment.HasIndex(x => new { x.MergeRequestId, x.ExternalKey }).IsUnique();
+        comment.HasOne<MergeRequest>().WithMany().HasForeignKey(x => x.MergeRequestId).OnDelete(DeleteBehavior.Cascade);
     }
 }

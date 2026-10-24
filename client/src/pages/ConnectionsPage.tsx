@@ -204,7 +204,7 @@ function ConnectionCard({ connection }: { connection: ConnectionResponse }) {
                                         checked={scopeForm.watch("watchMergeRequests")}
                                     />
                                 }
-                                label="Уведомлять о комментариях в моих MR/PR"
+                                label="Отслеживать мои MR/PR и комментарии"
                             />
                             <Typography variant="caption" color="text.secondary">
                                 Для комментариев нужен явный список проектов. После изменения списка выполняется новая

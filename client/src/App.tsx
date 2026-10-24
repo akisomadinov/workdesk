@@ -21,6 +21,7 @@ import MenuRounded from "@mui/icons-material/MenuRounded";
 import LayersRounded from "@mui/icons-material/LayersRounded";
 import DescriptionOutlined from "@mui/icons-material/DescriptionOutlined";
 import GroupsOutlined from "@mui/icons-material/GroupsOutlined";
+import MergeTypeRounded from "@mui/icons-material/MergeTypeRounded";
 import NotificationsOutlined from "@mui/icons-material/NotificationsOutlined";
 import AssessmentOutlined from "@mui/icons-material/AssessmentOutlined";
 import SettingsOutlined from "@mui/icons-material/SettingsOutlined";
@@ -62,6 +63,7 @@ function WorkspaceLayout() {
     const navigation = [
         { path: "/", label: "Сегодня", icon: <WbSunnyOutlined /> },
         { path: "/board", label: "Задачи", icon: <ViewKanbanOutlined /> },
+        { path: "/merge-requests", label: "Мои MR", icon: <MergeTypeRounded /> },
         { path: "/notes", label: "Документы", icon: <DescriptionOutlined /> },
         { path: "/team", label: "Команда", icon: <GroupsOutlined /> }
     ];
@@ -69,6 +71,7 @@ function WorkspaceLayout() {
         const selected =
             location.pathname === item.path ||
             (item.path === "/notes" && location.pathname.startsWith("/notes/")) ||
+            (item.path === "/merge-requests" && location.pathname.startsWith("/merge-requests/")) ||
             (item.path === "/board" && ["/inbox", "/archive"].includes(location.pathname));
         return (
             <ListItemButton

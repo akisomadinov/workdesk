@@ -44,6 +44,60 @@ public sealed class WorkflowTests : IDisposable
         Assert.Equal("Обновлённое описание", updated.Title);
         Assert.Equal(1, updated.Revision);
     }
+    [Theory]
+    [InlineData("TestDone", "opened", "done")]
+    [InlineData("Test", "opened", "waiting")]
+    [InlineData("DevDone", "opened", "waiting")]
+    [InlineData("InProgress", "opened", "doing")]
+    [InlineData("ToDo", "opened", "planned")]
+    [InlineData("bugs", "opened", "planned")]
+    [InlineData("backlog", "opened", "inbox")]
+    [InlineData("  tEsT  ", "opened", "waiting")]
+    [InlineData("Баг B,Feature", "opened", "inbox")]
+    [InlineData("", "opened", "inbox")]
+    [InlineData("bugs,ToDo,InProgress", "opened", "doing")]
+    [InlineData("bugs,InProgress,DevDone,Test", "opened", "waiting")]
+    [InlineData("Test,TestDone,InProgress,bugs", "opened", "done")]
+    [InlineData("ToDo", "closed", "done")]
+    public async Task GitlabLabelsChooseInitialColumnWithoutOverwritingPersonalWork(string labels, string state, string expectedStage)
+    {
+        var source = await Source("workflow");
+        var currentLabels = labels.Split(',', StringSplitOptions.RemoveEmptyEntries);
+        var client = new IssueClient(new Factory(new Handler(_ =>
+            new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(JsonSerializer.Serialize(new[]
+                {
+                    new { id = 42, project_id = 7, title = "Задача", description = "Описание", state,
+                        web_url = "https://workflow.example.test/team/project/-/issues/1",
+                        references = new { full = "team/project#1" }, updated_at = "2026-10-23T10:00:00Z",
+                        labels = currentLabels }
+                }), Encoding.UTF8, "application/json")
+            })));
+        var service = Service(client);
+        Assert.Equal("ok", (await service.Sync(source.Id.Value, default)).Health);
+        var tasks = new TaskService(unit);
+        var task = Assert.Single(await tasks.GetAll(default));
+        Assert.Equal(expectedStage, task.Stage);
+        var expectedBlocker = expectedStage == "waiting"
+            ? currentLabels.Any(label => label.Trim().Equals("Test", StringComparison.OrdinalIgnoreCase))
+                ? "Ожидается результат тестирования."
+                : "MR отправлен на ревью. Ожидается ответ ревьюера."
+            : "";
+        Assert.Equal(expectedBlocker, task.Blocker);
+        Assert.Equal(0, task.Revision);
+        await tasks.Save(new SaveTaskRequest { Id = task.Id, Title = task.Title, Revision = task.Revision,
+            Stage = "planned", Notes = "Личная заметка", NextStep = "Следующий шаг", Blocker = "Нужен ответ", PlannedFor = "2026-10-26" }, default);
+        currentLabels = ["TestDone"];
+        Assert.Equal("ok", (await service.Sync(source.Id.Value, default)).Health);
+        var updated = Assert.Single(await tasks.GetAll(default));
+        Assert.Equal("planned", updated.Stage);
+        Assert.Equal("Личная заметка", updated.Notes);
+        Assert.Equal("Следующий шаг", updated.NextStep);
+        Assert.Equal("Нужен ответ", updated.Blocker);
+        Assert.Equal("2026-10-26", updated.PlannedFor);
+        Assert.Equal(1, updated.Revision);
+    }
     [Fact]
     public async Task SameIssueNumberOnDifferentServersCreatesSeparateTasks()
     {

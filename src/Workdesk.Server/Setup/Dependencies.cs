@@ -19,12 +19,18 @@ public static class Dependencies
         services.AddTransient<ITaskService, TaskService>();
         services.AddTransient<IConnectionService, ConnectionService>();
         services.AddTransient<IIssueClient, IssueClient>();
-        services.AddTransient<IActivityClient, ActivityClient>();
+        services.AddTransient<IMergeRequestClient, MergeRequestClient>();
+        services.AddTransient<IMergeRequestService, MergeRequestService>();
         services.AddTransient<INoteService, NoteService>();
         services.AddTransient<ITeamService, TeamService>();
         services.AddTransient<IAccessPolicy, AccessPolicy>();
         services.AddTransient<ICurrentActor, CurrentActor>();
         services.AddTransient<INotificationService, NotificationService>();
+        services.AddTransient<ITelegramLinkService, TelegramLinkService>();
+        services.AddSingleton<ISharedTelegramBot, SharedTelegramBot>();
+        services.AddHttpClient("telegram-poll", client => client.Timeout = TimeSpan.FromSeconds(30))
+            .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false }).RemoveAllLoggers();
+        services.AddHostedService<TelegramWorker>();
         services.AddHttpContextAccessor();
         services.AddHttpClient("telegram", client => client.Timeout = TimeSpan.FromSeconds(15))
             .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false }).RemoveAllLoggers();

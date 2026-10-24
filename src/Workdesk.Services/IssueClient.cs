@@ -6,7 +6,10 @@ using Workdesk.Data;
 
 namespace Workdesk.Services;
 
-public sealed record ImportedIssue(string Key, string Title, string Project, string Description, string Url, string State, DateTime Updated, string Milestone = "");
+public sealed record ImportedIssue(string Key, string Title, string Project, string Description, string Url, string State, DateTime Updated, string Milestone = "")
+{
+    public string[] Labels { get; init; } = [];
+}
 public sealed class SourceException(string health, string message) : Exception(message) { public string Health { get; } = health; }
 public interface IIssueClient { Task<List<ImportedIssue>> Fetch(Connection source, string token, CancellationToken ct); }
 
@@ -83,7 +86,12 @@ public sealed class IssueClient(IHttpClientFactory factory) : IIssueClient
                     var updated = item.GetProperty("updated_at").GetDateTime().ToUniversalTime();
                     result.Add(new ImportedIssue(key, Read(item, "title"), project,
                         Read(item, gitlab ? "description" : "body"), url, Read(item, "state"), updated,
-                        item.TryGetProperty("milestone", out var milestone) && milestone.ValueKind == JsonValueKind.Object ? Read(milestone, "title") : ""));
+                        item.TryGetProperty("milestone", out var milestone) && milestone.ValueKind == JsonValueKind.Object ? Read(milestone, "title") : "")
+                    {
+                        Labels = gitlab && item.TryGetProperty("labels", out var labels) && labels.ValueKind == JsonValueKind.Array
+                            ? labels.EnumerateArray().Where(label => label.ValueKind == JsonValueKind.String).Select(label => label.GetString()!).ToArray()
+                            : []
+                    });
                 }
                 // Page length is checked before filtering out PRs. Never follow foreign pagination URLs with a token.
                 if (elements.GetArrayLength() < 100) break;

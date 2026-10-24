@@ -1,7 +1,11 @@
 import { workdeskApi } from "./autogen/workdesk";
 workdeskApi.enhanceEndpoints({
     endpoints: {
-        connectionsSync: { invalidatesTags: ["Connections", "Tasks", "Notifications"] },
+        telegramLinkCreate: { invalidatesTags: ["TelegramLink"] },
+        telegramLinkDelete: { invalidatesTags: ["TelegramLink", "Notifications"] },
+        connectionsSync: { invalidatesTags: ["Connections", "Tasks", "Notifications", "MergeRequests"] },
+        mergeRequestsRead: { invalidatesTags: ["MergeRequests", "Notifications"] },
+        mergeRequestsNotifications: { invalidatesTags: ["MergeRequests", "Notifications"] },
         notesSave: { invalidatesTags: ["Notes", "Tasks"] },
         notesDelete: { invalidatesTags: ["Notes", "Tasks"] },
         notesRestore: { invalidatesTags: ["Notes", "Tasks"] },

@@ -46,9 +46,13 @@ public sealed class WorkItem : BaseEntity<WorkItemId>
     public void SetOwner(Guid owner) => OwnerId = owner;
     public void SetCollaboration(Guid? workspace, Guid? assignee, string milestone) { WorkspaceId = workspace; AssigneeId = assignee; Milestone = milestone; }
     public void SetExternalMilestone(string milestone) => ExternalMilestone = milestone;
-    public WorkItem(string title, string project, string description)
+    public WorkItem(string title, string project, string description, string initialStage = "inbox", string initialBlocker = "")
     {
+        if (initialStage is not ("inbox" or "planned" or "doing" or "waiting" or "done"))
+            throw new ArgumentOutOfRangeException(nameof(initialStage), "Неизвестный статус задачи.");
         Id = WorkItemId.New(); Title = title; Project = project; Description = description;
+        Stage = initialStage;
+        Blocker = initialBlocker;
     }
     public void Update(string title, string project, string description, string notes, string nextStep,
         string blocker, string stage, string priority, string? plannedFor, bool archived)
@@ -82,11 +86,13 @@ public sealed class Connection : BaseEntity<ConnectionId>
     public DateTime? LastAttempt { get; private set; }
     public DateTime? LastSuccess { get; private set; }
     public DateTime? SyncedThrough { get; private set; }
+    public DateTime? MergeRequestsSyncedThrough { get; private set; }
     public int ImportedCount { get; private set; }
 
     private Connection() { }
     public void SetScope(Guid owner, string projects, bool watch)
     {
+        if (Projects != projects || WatchMergeRequests != watch) MergeRequestsSyncedThrough = null;
         if (Projects != projects) { SyncedThrough = null; LastSuccess = null; Health = "never"; }
         OwnerId = owner; Projects = projects; WatchMergeRequests = watch;
     }
@@ -95,6 +101,7 @@ public sealed class Connection : BaseEntity<ConnectionId>
         Id = ConnectionId.New(); Name = name; Provider = provider; ApiUrl = apiUrl; RequiresVpn = requiresVpn;
     }
     public void SetEnabled(bool value) { Enabled = value; Modified = DateTime.UtcNow; }
+    public void RecordMergeRequestSync(DateTime started) => MergeRequestsSyncedThrough = started;
     public void Record(string health, string message, int? count = null, DateTime? syncedThrough = null)
     {
         LastAttempt = DateTime.UtcNow; Health = health; Message = message;

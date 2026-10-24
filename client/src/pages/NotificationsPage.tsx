@@ -62,7 +62,11 @@ export default function NotificationsPage() {
                             {dateTime(item.created)}
                         </Typography>
                         <Stack direction="row" gap={1}>
-                            {item.kind === "invite" ? (
+                            {item.mergeRequestId ? (
+                                <Button component={Link} to={`/merge-requests/${item.mergeRequestId}`}>
+                                    Открыть обсуждение
+                                </Button>
+                            ) : item.kind === "invite" ? (
                                 <Button component={Link} to="/team">
                                     Открыть приглашения
                                 </Button>

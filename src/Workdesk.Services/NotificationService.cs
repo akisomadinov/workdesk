@@ -8,31 +8,31 @@ using Workdesk.Data;
 
 namespace Workdesk.Services;
 
-public sealed record NotificationResponse(Guid Id, string Title, string Url, string Kind, bool Read, string Delivery, DateTime Created);
-public sealed record TelegramResponse(string ChatId, bool Enabled, bool HasToken);
+public sealed record NotificationResponse(Guid Id, string Title, string Url, string Kind, bool Read, string Delivery, DateTime Created, Guid? MergeRequestId);
+public sealed record TelegramResponse(string ChatId, bool Enabled, bool HasToken, bool UseSharedBot);
 public sealed class SaveTelegramRequest { public string ChatId { get; set; } = ""; public string? Token { get; set; } public bool Enabled { get; set; } }
 public interface INotificationService
 {
-    Task Record(Guid owner, string key, string title, string url, string kind, CancellationToken ct);
+    Task Record(Guid owner, string key, string title, string url, string kind, CancellationToken ct, Guid? mergeRequestId = null);
     Task<List<NotificationResponse>> List(CancellationToken ct);
     Task Read(Guid id, CancellationToken ct);
     Task<TelegramResponse> Settings(CancellationToken ct);
     Task<TelegramResponse> Configure(SaveTelegramRequest request, CancellationToken ct);
     Task Deliver(CancellationToken ct);
 }
-public sealed class NotificationService(IUnitOfWork unit, IAccessPolicy access, ISecretStore secrets, IHttpClientFactory factory, IDeliveryQueue? queue = null) : INotificationService
+public sealed class NotificationService(IUnitOfWork unit, IAccessPolicy access, ISecretStore secrets, IHttpClientFactory factory, IDeliveryQueue? queue = null, ISharedTelegramBot? sharedBot = null) : INotificationService
 {
     private readonly HashSet<(Guid, string)> recorded = [];
-    public async Task Record(Guid owner, string key, string title, string url, string kind, CancellationToken ct)
+    public async Task Record(Guid owner, string key, string title, string url, string kind, CancellationToken ct, Guid? mergeRequestId = null)
     {
         if (!recorded.Add((owner, key))) return;
         if ((await unit.Notifications.GetAll(ct)).Any(x => x.OwnerId == owner && x.EventKey == key)) return;
         var settings = await unit.Telegram.Get(owner, ct);
-        unit.Notifications.Add(new Notification(owner, key, title[..Math.Min(500, title.Length)], url, kind, settings?.Enabled == true && kind != "invite"));
+        unit.Notifications.Add(new Notification(owner, key, title[..Math.Min(500, title.Length)], url, kind, settings?.Enabled == true && kind != "invite", mergeRequestId));
     }
     public async Task<List<NotificationResponse>> List(CancellationToken ct) => (await unit.Notifications.GetAll(ct))
         .Where(x => x.OwnerId == access.UserId).OrderByDescending(x => x.Created).Take(300)
-        .Select(x => new NotificationResponse(x.Id.Value, x.Title, x.Url, x.Kind, x.Read, x.Delivery, x.Created)).ToList();
+        .Select(x => new NotificationResponse(x.Id.Value, x.Title, x.Url, x.Kind, x.Read, x.Delivery, x.Created, x.MergeRequestId)).ToList();
     public async Task Read(Guid id, CancellationToken ct)
     {
         var item = await unit.Notifications.Get(new NotificationId(id), ct);
@@ -40,9 +40,17 @@ public sealed class NotificationService(IUnitOfWork unit, IAccessPolicy access, 
         item.MarkRead(); await unit.Commit(ct);
     }
     public async Task<TelegramResponse> Settings(CancellationToken ct)
-    { var value = await unit.Telegram.Get(access.UserId, ct); return new(value?.ChatId ?? "", value?.Enabled ?? false, secrets.Has(TokenKey(access.UserId))); }
+    { var value = await unit.Telegram.Get(access.UserId, ct); return new(value?.ChatId ?? "", value?.Enabled ?? false, value?.UseSharedBot == true ? sharedBot?.Configured == true : secrets.Has(TokenKey(access.UserId)), value?.UseSharedBot ?? false); }
     public async Task<TelegramResponse> Configure(SaveTelegramRequest request, CancellationToken ct)
     {
+        var settings = await unit.Telegram.Get(access.UserId, ct);
+        if (settings?.UseSharedBot == true)
+        {
+            if (request.ChatId != settings.ChatId || !string.IsNullOrWhiteSpace(request.Token)) throw new AppException("Для смены Telegram-аккаунта отключи его и создай новую ссылку.");
+            settings.Update(settings.ChatId, request.Enabled);
+            if (!request.Enabled) foreach (var notification in (await unit.Notifications.GetAll(ct)).Where(x => x.OwnerId == access.UserId)) notification.StopDelivery();
+            await unit.Commit(ct); return await Settings(ct);
+        }
         if (request.ChatId.Length > 100 || request.Enabled && !Regex.IsMatch(request.ChatId, @"^(@[A-Za-z0-9_]{5,}|-?\d+)$")) throw new AppException("Укажи числовой chat_id или @имя канала.");
         if (!string.IsNullOrWhiteSpace(request.Token))
         {
@@ -50,7 +58,6 @@ public sealed class NotificationService(IUnitOfWork unit, IAccessPolicy access, 
             secrets.Set(TokenKey(access.UserId), request.Token);
         }
         if (request.Enabled && !secrets.Has(TokenKey(access.UserId))) throw new AppException("Добавь токен бота перед включением уведомлений.");
-        var settings = await unit.Telegram.Get(access.UserId, ct);
         if (settings is null) { settings = new TelegramSettings(access.UserId); unit.Telegram.Add(settings); }
         settings.Update(request.ChatId.Trim(), request.Enabled); await unit.Commit(ct); return await Settings(ct);
     }
@@ -68,11 +75,17 @@ public sealed class NotificationService(IUnitOfWork unit, IAccessPolicy access, 
             var item = all.FirstOrDefault(x => x.Id.Value == entry.NotificationId);
             if (item is null || item.Delivery != "pending") { if (queue?.Configured == true) await queue.Ack(entry); continue; }
             if (item.RetryAt > DateTime.UtcNow) continue;
+            if (item.MergeRequestId is { } mergeId && (await unit.MergeRequests.Get(new MergeRequestId(mergeId), ct))?.NotificationsEnabled != true)
+            {
+                item.StopDelivery(); await unit.Commit(ct);
+                if (queue?.Configured == true) await queue.Ack(entry);
+                continue;
+            }
             var settings = await unit.Telegram.Get(item.OwnerId, ct);
             if (settings?.Enabled != true) continue;
             try
             {
-                var token = secrets.Get(TokenKey(item.OwnerId));
+                var token = settings.UseSharedBot ? sharedBot?.Token : secrets.Get(TokenKey(item.OwnerId));
                 if (token is null) { item.Failed(); continue; }
                 item.Sending();
                 // Optimistic concurrency on Delivery is the final guard even if a queue message is replayed.
