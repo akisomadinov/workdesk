@@ -52,6 +52,7 @@ public sealed class WorkdeskContext(DbContextOptions<WorkdeskContext> options) :
         builder.Entity<TelegramLink>().HasIndex(x => x.TokenHash).IsUnique();
         builder.Entity<TelegramLink>().Property(x => x.TokenHash).IsConcurrencyToken();
         builder.Entity<TelegramLink>().Property(x => x.Used).IsConcurrencyToken();
+        builder.Entity<TelegramLink>().Property(x => x.ConfirmationId).IsConcurrencyToken();
         builder.Entity<TelegramInbox>().HasKey(x => x.BotId);
         builder.Entity<TelegramInbox>().Property(x => x.Offset).IsConcurrencyToken();
         var merge = builder.Entity<MergeRequest>();

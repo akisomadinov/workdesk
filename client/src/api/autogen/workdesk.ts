@@ -353,6 +353,27 @@ const injectedRtkApi = api
                 query: () => ({ url: `/api/TelegramLink`, method: "DELETE" }),
                 invalidatesTags: ["TelegramLink"],
             }),
+            telegramLinkConfirm: build.mutation<
+                TelegramLinkConfirmResponse,
+                TelegramLinkConfirmRequest
+            >({
+                query: (queryArg) => ({
+                    url: `/api/TelegramLink/confirm`,
+                    method: "POST",
+                    body: queryArg.confirmTelegramRequest,
+                }),
+                invalidatesTags: ["TelegramLink"],
+            }),
+            telegramLinkCancel: build.mutation<
+                TelegramLinkCancelResponse,
+                TelegramLinkCancelRequest
+            >({
+                query: () => ({
+                    url: `/api/TelegramLink/cancel`,
+                    method: "POST",
+                }),
+                invalidatesTags: ["TelegramLink"],
+            }),
             appapihealth: build.query<
                 AppapihealthResponse,
                 AppapihealthRequest
@@ -529,6 +550,12 @@ export type TelegramLinkCreateResponse =
 export type TelegramLinkCreateRequest = void;
 export type TelegramLinkDeleteResponse = unknown;
 export type TelegramLinkDeleteRequest = void;
+export type TelegramLinkConfirmResponse = unknown;
+export type TelegramLinkConfirmRequest = {
+    confirmTelegramRequest: ConfirmTelegramRequest;
+};
+export type TelegramLinkCancelResponse = unknown;
+export type TelegramLinkCancelRequest = void;
 export type AppapihealthResponse =
     /** status 200 OK */ StringString3C3EfAnonymousType0;
 export type AppapihealthRequest = void;
@@ -806,14 +833,25 @@ export type PendingInvitationResponse = {
 export type RoleRequest = {
     role?: string | null;
 };
+export type TelegramIdentity = {
+    chatId?: string | null;
+    displayName?: string | null;
+    username?: string | null;
+};
 export type TelegramLinkState = {
     available?: boolean;
     connected?: boolean;
     pendingUntil?: string | null;
+    confirmationId?: string | null;
+    candidate?: TelegramIdentity;
+    account?: TelegramIdentity;
 };
 export type TelegramLinkResponse = {
     url?: string | null;
     expiresAt?: string;
+};
+export type ConfirmTelegramRequest = {
+    confirmationId?: string;
 };
 export type StringString3C3EfAnonymousType0 = {
     status?: string | null;
@@ -861,6 +899,8 @@ export const {
     useTelegramLinkGetQuery,
     useTelegramLinkCreateMutation,
     useTelegramLinkDeleteMutation,
+    useTelegramLinkConfirmMutation,
+    useTelegramLinkCancelMutation,
     useAppapihealthQuery,
     useAppapibackupQuery,
 } = injectedRtkApi;

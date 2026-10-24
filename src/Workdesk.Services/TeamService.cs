@@ -45,7 +45,7 @@ public sealed class TeamService(IUnitOfWork unit, ICurrentActor actor, RuntimeOp
         if (options.SharedMode || actor.Id != LocalIdentity.OwnerId || await unit.Accounts.Get(new UserId(LocalIdentity.OwnerId), ct) is not null)
             throw new AppException("Начальная настройка уже завершена или недоступна.", 403);
         var account = NewAccount(LocalIdentity.OwnerId, request.Name, request.Email, request.Password, request.Login);
-        unit.Accounts.Add(account); await unit.Commit(ct); return account;
+        unit.Accounts.Add(account); await unit.Commit(ct); options.LocalAccountConfigured = true; return account;
     }
     public async Task<Account> Login(CredentialsRequest request, CancellationToken ct)
     {

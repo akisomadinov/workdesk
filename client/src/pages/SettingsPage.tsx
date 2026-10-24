@@ -2,7 +2,7 @@ import { lazy, Suspense } from "react";
 import { Box, List, ListItemButton, ListItemIcon, ListItemText, Stack, Typography } from "@mui/material";
 import TuneRounded from "@mui/icons-material/TuneRounded";
 import CableRounded from "@mui/icons-material/CableRounded";
-import NotificationsOutlined from "@mui/icons-material/NotificationsOutlined";
+import Telegram from "@mui/icons-material/Telegram";
 import StorageRounded from "@mui/icons-material/StorageRounded";
 import { Link, Navigate, useLocation } from "react-router-dom";
 import GeneralSettings from "./settings/GeneralSettings";
@@ -14,8 +14,8 @@ const sections = [
     { path: "/settings/connections", label: "Подключения", icon: <CableRounded />, content: <ConnectionsPage /> },
     {
         path: "/settings/notifications",
-        label: "Уведомления",
-        icon: <NotificationsOutlined />,
+        label: "Telegram",
+        icon: <Telegram />,
         content: <NotificationSettings />
     },
     { path: "/settings/data", label: "Данные", icon: <StorageRounded />, content: <DataSettings /> }

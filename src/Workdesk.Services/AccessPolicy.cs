@@ -4,13 +4,19 @@ using Workdesk.Data;
 
 namespace Workdesk.Services;
 
-public sealed class RuntimeOptions { public bool SharedMode { get; init; } public string[] AllowedSourceHosts { get; init; } = []; }
+public sealed class RuntimeOptions
+{
+    public bool SharedMode { get; init; }
+    public bool LocalAccountConfigured { get; set; }
+    public bool RequireAuthentication => SharedMode || LocalAccountConfigured;
+    public string[] AllowedSourceHosts { get; init; } = [];
+}
 public interface ICurrentActor { Guid Id { get; } bool IsSystem { get; } }
 public sealed class CurrentActor(IHttpContextAccessor accessor, RuntimeOptions options) : ICurrentActor
 {
     public bool IsSystem => accessor.HttpContext is null;
     public Guid Id => Guid.TryParse(accessor.HttpContext?.User.FindFirstValue(ClaimTypes.NameIdentifier), out var id)
-        ? id : !options.SharedMode || IsSystem ? LocalIdentity.OwnerId : Guid.Empty;
+        ? id : !options.RequireAuthentication || IsSystem ? LocalIdentity.OwnerId : Guid.Empty;
 }
 public sealed class LocalActor : ICurrentActor { public Guid Id => LocalIdentity.OwnerId; public bool IsSystem => false; }
 public interface IAccessPolicy

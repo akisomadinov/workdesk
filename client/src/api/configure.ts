@@ -2,6 +2,8 @@ import { workdeskApi } from "./autogen/workdesk";
 workdeskApi.enhanceEndpoints({
     endpoints: {
         telegramLinkCreate: { invalidatesTags: ["TelegramLink"] },
+        telegramLinkConfirm: { invalidatesTags: ["TelegramLink", "Notifications"] },
+        telegramLinkCancel: { invalidatesTags: ["TelegramLink"] },
         telegramLinkDelete: { invalidatesTags: ["TelegramLink", "Notifications"] },
         connectionsSync: { invalidatesTags: ["Connections", "Tasks", "Notifications", "MergeRequests"] },
         mergeRequestsRead: { invalidatesTags: ["MergeRequests", "Notifications"] },

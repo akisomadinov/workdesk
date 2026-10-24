@@ -16,19 +16,12 @@ import { useTelegramLinkGetQuery } from "@/api/autogen/workdesk";
 import TelegramLinkCard from "./TelegramLinkCard";
 export default function NotificationSettings() {
     const { form, settings, isLoading, error, saved, submit } = useTelegramSettings();
-    const { data: linkState } = useTelegramLinkGetQuery();
+    const { data: linkState, isLoading: linkLoading, error: linkError } = useTelegramLinkGetQuery();
     const busy = isLoading || form.formState.isSubmitting || !settings;
+    if (linkLoading || isLoading) return <CircularProgress size={22} aria-label="Загрузка Telegram" />;
+    if (linkError) return <Alert severity="error">Не удалось загрузить настройки Telegram. Обнови страницу.</Alert>;
     return (
         <Stack gap={3} sx={{ maxWidth: 720 }}>
-            <Box>
-                <Typography variant="h5">Уведомления</Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                    Новые задачи, комментарии в MR/PR и приглашения появляются в ленте уведомлений.
-                </Typography>
-                <Button component={Link} to="/notifications" size="small" sx={{ mt: 1 }}>
-                    Открыть ленту
-                </Button>
-            </Box>
             {linkState?.available && (!settings?.hasToken || settings.useSharedBot) ? (
                 <TelegramLinkCard />
             ) : (

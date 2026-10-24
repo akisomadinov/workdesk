@@ -77,7 +77,22 @@ with tempfile.TemporaryDirectory(prefix="workdesk-http-") as directory:
 
     try:
         start(False)
-        request("/api/Auth/setup", {"name": "Owner", "login": "owner", "email": "owner@example.test", "password": PASSWORD})
+        _, headers = request("/api/Auth/setup", {"name": "Owner", "login": "owner", "email": "owner@example.test", "password": PASSWORD})
+        local_owner = headers["Set-Cookie"].split(";", 1)[0]
+        session, _ = request("/api/Auth/session", cookie=local_owner)
+        assert session["authenticated"]
+        request("/api/Notes", cookie=local_owner)
+        _, headers = request("/api/Auth/logout", {}, local_owner)
+        assert "expires=" in headers["Set-Cookie"].lower()
+        session, _ = request("/api/Auth/session")
+        assert not session["authenticated"] and not session["setupRequired"]
+        request("/api/Notes", expected=401)
+        request("/api/TelegramLink", {}, expected=401)
+        stop()
+        start(False)
+        request("/api/Notes", expected=401)
+        _, headers = request("/api/Auth/login", {"login": "owner", "password": PASSWORD})
+        request("/api/Notes", cookie=headers["Set-Cookie"].split(";", 1)[0])
         stop()
         start(True)
         request("/api/Notes", expected=403, secure=False)
@@ -118,6 +133,6 @@ with tempfile.TemporaryDirectory(prefix="workdesk-http-") as directory:
             except urllib.error.HTTPError as error:
                 statuses.append(error.code)
         assert 429 in statuses and all(code in (401, 429) for code in statuses)
-        print("Shared HTTP smoke passed: HTTPS/auth cookies, CSRF, isolation, roles, revocation, invitations, rate limit")
+        print("HTTP smoke passed: local logout/restart/login, HTTPS/auth cookies, CSRF, isolation, roles, revocation, invitations, rate limit")
     finally:
         stop()

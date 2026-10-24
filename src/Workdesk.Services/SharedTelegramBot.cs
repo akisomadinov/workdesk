@@ -5,7 +5,7 @@ using System.Text.RegularExpressions;
 namespace Workdesk.Services;
 
 public sealed class TelegramBotOptions { public string? TokenFile { get; init; } }
-public sealed record TelegramBotUpdate(long Id, long ChatId, long SenderId, bool Private, string Text);
+public sealed record TelegramBotUpdate(long Id, long ChatId, long SenderId, bool Private, string Text, string DisplayName = "", string Username = "");
 public interface ISharedTelegramBot
 {
     bool Configured { get; }
@@ -45,7 +45,9 @@ public sealed class SharedTelegramBot(TelegramBotOptions options, IHttpClientFac
             if (!update.TryGetProperty("message", out var message) || !message.TryGetProperty("chat", out var chat)
                 || !message.TryGetProperty("from", out var from)) { updates.Add(new(id, 0, 0, false, "")); continue; }
             updates.Add(new(id, chat.GetProperty("id").GetInt64(), from.GetProperty("id").GetInt64(),
-                chat.GetProperty("type").GetString() == "private", message.TryGetProperty("text", out var text) ? text.GetString() ?? "" : ""));
+                chat.GetProperty("type").GetString() == "private", message.TryGetProperty("text", out var text) ? text.GetString() ?? "" : "",
+                string.Join(" ", new[] { "first_name", "last_name" }.Select(key => from.TryGetProperty(key, out var value) ? value.GetString() : null).Where(value => !string.IsNullOrWhiteSpace(value))),
+                from.TryGetProperty("username", out var username) ? username.GetString() ?? "" : ""));
         }
         return updates;
     }

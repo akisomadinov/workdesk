@@ -31,6 +31,9 @@ public sealed class TelegramLinkTests : IDisposable
         Assert.InRange((linkA.ExpiresAt - DateTime.UtcNow).TotalMinutes, 9, 10);
         bot.Items = [new(1, 111, 111, true, "/start " + tokenA), new(2, 222, 222, true, "/start " + tokenB)];
         await a.Poll(default);
+        Assert.False((await a.State(default)).Connected); Assert.False((await b.State(default)).Connected);
+        Assert.Null(await unit.Telegram.Get(first, default));
+        await Confirm(a); await Confirm(b);
         Assert.True((await a.State(default)).Connected); Assert.True((await b.State(default)).Connected);
         Assert.Equal("111", (await unit.Telegram.Get(first, default))!.ChatId);
         Assert.Equal("222", (await unit.Telegram.Get(second, default))!.ChatId);
@@ -58,7 +61,61 @@ public sealed class TelegramLinkTests : IDisposable
             new(3, -111, 111, false, "/start " + Token(current)), new(4, 111, 222, true, "/start " + Token(current))];
         await service.Poll(default); Assert.False((await service.State(default)).Connected);
         bot.Items = [new(5, 111, 111, true, "/start " + Token(current))]; await service.Poll(default);
+        Assert.False((await service.State(default)).Connected);
+        await Confirm(service);
         Assert.True((await service.State(default)).Connected);
+    }
+    [Fact]
+    public async Task OnlyOwningSessionCanConfirmAndAnotherStartCannotReplaceCandidate()
+    {
+        var owner = Guid.NewGuid(); var other = Guid.NewGuid(); var service = Service(owner);
+        var link = await service.Begin(default);
+        bot.Items = [new(1, 111, 111, true, "/start " + Token(link), "Fixture User", "fixture_user")];
+        await service.Poll(default);
+        var state = await service.State(default);
+        Assert.Equal("fixture_user", state.Candidate!.Username);
+        var request = new ConfirmTelegramRequest { ConfirmationId = state.ConfirmationId!.Value };
+        await Assert.ThrowsAsync<AppException>(() => Service(other).Confirm(request, default));
+        await Assert.ThrowsAsync<AppException>(() => service.Confirm(new() { ConfirmationId = Guid.NewGuid() }, default));
+        bot.Items = [new(2, 222, 222, true, "/start " + Token(link), "Different User")];
+        await service.Poll(default);
+        Assert.Equal("111", (await service.State(default)).Candidate!.ChatId);
+        await service.Confirm(request, default);
+        Assert.Equal("fixture_user", (await service.State(default)).Account!.Username);
+        Assert.Null((await service.State(default)).Candidate);
+        await Assert.ThrowsAsync<AppException>(() => service.Confirm(request, default));
+    }
+    [Fact]
+    public async Task CancelExpiryAndRenewalInvalidateConfirmationWithoutChangingExistingChat()
+    {
+        var owner = Guid.NewGuid(); var service = Service(owner);
+        var settings = new TelegramSettings(owner); settings.Link("999"); unit.Telegram.Add(settings); await unit.Commit(default);
+        var initial = await service.Begin(default);
+        bot.Items = [new(1, 111, 111, true, "/start " + Token(initial))]; await service.Poll(default);
+        var stale = new ConfirmTelegramRequest { ConfirmationId = (await service.State(default)).ConfirmationId!.Value };
+        await service.Cancel(default);
+        await Assert.ThrowsAsync<AppException>(() => service.Confirm(stale, default));
+        Assert.Equal("999", (await service.State(default)).Account!.ChatId);
+        var next = await service.Begin(default);
+        bot.Items = [new(2, 222, 222, true, "/start " + Token(next))]; await service.Poll(default);
+        await Assert.ThrowsAsync<AppException>(() => service.Confirm(stale, default));
+        var pending = (await unit.TelegramLinks.Get(owner, default))!;
+        db.Entry(pending).Property(x => x.ExpiresAt).CurrentValue = DateTime.UtcNow.AddSeconds(-1); await unit.Commit(default);
+        Assert.Null((await service.State(default)).Candidate);
+        await Assert.ThrowsAsync<AppException>(() => service.Confirm(new() { ConfirmationId = pending.ConfirmationId!.Value }, default));
+        Assert.Equal("999", (await service.State(default)).Account!.ChatId);
+    }
+    [Fact]
+    public async Task OldQueuedNotificationsAreNotMovedToNewlyConfirmedChat()
+    {
+        var owner = Guid.NewGuid(); var service = Service(owner);
+        var old = new Notification(owner, "old", "Old", "", "comment", true);
+        unit.Notifications.Add(old); await unit.Commit(default);
+        var link = await service.Begin(default);
+        bot.Items = [new(1, 111, 111, true, "/start " + Token(link))]; await service.Poll(default);
+        Assert.Equal("pending", old.Delivery);
+        await Confirm(service);
+        Assert.Equal("off", old.Delivery);
     }
     [Fact]
     public async Task KnownProxyOutageKeepsUnsentNotificationForRetry()
@@ -90,6 +147,8 @@ public sealed class TelegramLinkTests : IDisposable
         Assert.True((await Service(second).State(default)).Connected);
     }
     private AccessPolicy Rights(Guid owner) => new(unit, new Actor(owner));
+    private static async Task Confirm(TelegramLinkService service) =>
+        await service.Confirm(new() { ConfirmationId = (await service.State(default)).ConfirmationId!.Value }, default);
     private TelegramLinkService Service(Guid owner) => new(unit, Rights(owner), bot);
     private static string Token(TelegramLinkResponse link) => link.Url.Split("?start=")[1];
     public void Dispose() { db.Dispose(); connection.Dispose(); }

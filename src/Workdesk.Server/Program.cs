@@ -84,9 +84,9 @@ app.Use(async (context, next) =>
     context.Response.Headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'";
     context.Response.Headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()";
     if (context.Request.Path.StartsWithSegments("/api")) context.Response.Headers.CacheControl = "no-store";
-    if (runtime.SharedMode && context.Request.Path.StartsWithSegments("/api") && context.Request.Path != "/api/health")
+    if (runtime.RequireAuthentication && context.Request.Path.StartsWithSegments("/api") && context.Request.Path != "/api/health")
     {
-        if (!context.Request.IsHttps) { await Results.Problem(statusCode: 403, title: "Командный сервер требует HTTPS.").ExecuteAsync(context); return; }
+        if (runtime.SharedMode && !context.Request.IsHttps) { await Results.Problem(statusCode: 403, title: "Командный сервер требует HTTPS.").ExecuteAsync(context); return; }
         if (!context.Request.Path.StartsWithSegments("/api/Auth") && context.User.Identity?.IsAuthenticated != true)
         { await Results.Problem(statusCode: 401, title: "Войди в свою учётную запись.").ExecuteAsync(context); return; }
     }
@@ -96,7 +96,7 @@ app.UseSwagger();
 app.UseDefaultFiles();
 app.UseStaticFiles();
 app.MapControllers();
-app.MapGet("/api/health", () => new { status = "ok", version = "0.8.1" });
+app.MapGet("/api/health", () => new { status = "ok", version = "0.9.0" });
 app.MapGet("/api/backup", async (ITaskService tasks, IConnectionService connections, INoteService notes, CancellationToken ct) =>
     Results.Json(new { Version = 3, ExportedAt = DateTime.UtcNow, Tasks = await tasks.GetAll(ct), Connections = await connections.GetAll(ct), Notes = await notes.GetAll(ct), DeletedTasks = await tasks.GetDeleted(ct), DeletedNotes = await notes.GetDeleted(ct) }));
 app.MapFallbackToFile("index.html");
@@ -105,7 +105,8 @@ using (var scope = app.Services.CreateScope())
     var db = scope.ServiceProvider.GetRequiredService<WorkdeskContext>();
     await db.Database.MigrateAsync();
     await db.Database.ExecuteSqlRawAsync("PRAGMA journal_mode=WAL;");
-    if (runtime.SharedMode && !await db.Set<Account>().AnyAsync(x => x.Id == new UserId(LocalIdentity.OwnerId)))
+    runtime.LocalAccountConfigured = await db.Set<Account>().AnyAsync(x => x.Id == new UserId(LocalIdentity.OwnerId));
+    if (runtime.SharedMode && !runtime.LocalAccountConfigured)
         throw new InvalidOperationException("Сначала создай учётную запись владельца в локальном режиме, затем включи командный режим.");
 }
 app.Run();

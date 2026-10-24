@@ -108,6 +108,8 @@ public sealed class Notification : BaseEntity<NotificationId>
 }
 public sealed class TelegramSettings
 {
+    public string DisplayName { get; private set; } = "";
+    public string Username { get; private set; } = "";
     public bool UseSharedBot { get; private set; }
     public Guid OwnerId { get; private set; }
     public string ChatId { get; private set; } = "";
@@ -115,6 +117,7 @@ public sealed class TelegramSettings
     private TelegramSettings() { }
     public TelegramSettings(Guid owner) => OwnerId = owner;
     public void Update(string chat, bool enabled) { ChatId = chat; Enabled = enabled; }
-    public void Link(string chat) { ChatId = chat; Enabled = true; UseSharedBot = true; }
-    public void Unlink() { ChatId = ""; Enabled = false; UseSharedBot = false; }
+    public void Link(string chat, string name = "", string username = "")
+    { ChatId = chat; DisplayName = name; Username = username; Enabled = true; UseSharedBot = true; }
+    public void Unlink() { ChatId = ""; DisplayName = ""; Username = ""; Enabled = false; UseSharedBot = false; }
 }

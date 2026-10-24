@@ -58,11 +58,14 @@ export default function QuickSearch() {
             <Button
                 size="small"
                 color="inherit"
-                startIcon={<SearchRounded />}
                 aria-label="Поиск задач и документов"
                 onClick={() => setOpen(true)}
+                sx={{ minWidth: 40, height: 40, px: { xs: 1, sm: 1.5 }, gap: 0.75 }}
             >
-                Поиск{" "}
+                <SearchRounded fontSize="small" />
+                <Box component="span" sx={{ display: { xs: "none", sm: "inline" } }}>
+                    Поиск
+                </Box>
                 <Box
                     component="span"
                     sx={{ display: { xs: "none", sm: "inline" }, color: "text.disabled", ml: 1.5, fontSize: 11 }}
