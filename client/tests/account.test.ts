@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { randomBytes } from "node:crypto";
 import { safeReturnTo, accountPath } from "../src/pages/account/navigation.ts";
 import { registrationSchema, loginSchema } from "../src/pages/account/validation.ts";
 import { JSDOM } from "jsdom";
@@ -22,12 +23,13 @@ test("authentication redirects keep internal destinations and reject external UR
     assert.equal(new URLSearchParams(route.split("?")[1]).get("returnTo"), invitation);
 });
 test("registration validates identity and password confirmation without restricting existing login", () => {
+    const password = randomBytes(24).toString("base64url");
     const values = {
         name: " Reader ",
         login: " READER ",
         email: "reader@example.test",
-        password: "long-passphrase-123",
-        confirmation: "long-passphrase-123"
+        password,
+        confirmation: password
     };
     const parsed = registrationSchema.parse(values);
     assert.equal(parsed.name, "Reader");
